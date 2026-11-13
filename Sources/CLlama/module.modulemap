@@ -1,0 +1,4 @@
+module CLlama [system] {
+    header "../../vendor/llama/include/llama.h"
+    export *
+}

@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # 辞書・モデル・llama.cpp は大きいので、版を決めているファイルが変わらない限り使い回す
+      - uses: actions/cache@v4
+        with:
+          path: |
+            vendor/mozc
+            vendor/models
+          key: data-${{ hashFiles('scripts/fetch-data.sh') }}
+      - uses: actions/cache@v4
+        with:
+          path: vendor/llama
+          key: llama-${{ runner.os }}-${{ hashFiles('scripts/llama.commit', 'scripts/llama-zenz.patch', 'scripts/build-llama.sh') }}
+
+      - name: Download dictionary and model
+        run: make data
+      - name: Build llama.cpp
+        run: '[ -f vendor/llama/lib/libllama.a ] || make llama'
+      - name: Test
+        run: make test
+      - name: Build input method app
+        run: make app
