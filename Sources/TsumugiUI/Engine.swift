@@ -76,10 +76,10 @@ public final class Engine {
         set { defaults.set(newValue, forKey: "proofreadEnabled") }
     }
 
-    /// 直しの提案を Tab だけで反映するか。false なら Shift+Tab を必要とする (Tab を字下げや欄の移動に使いたい人向け)。
-    public var correctionUsesPlainTab: Bool {
-        get { defaults.object(forKey: "correctionUsesPlainTab") as? Bool ?? true }
-        set { defaults.set(newValue, forKey: "correctionUsesPlainTab") }
+    /// 英字と日本語のあいだの空白を、打ち忘れたときに補うか。
+    public var autoSpacingEnabled: Bool {
+        get { defaults.object(forKey: "autoSpacingEnabled") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "autoSpacingEnabled") }
     }
 
     // MARK: 見送った直し

@@ -8,7 +8,7 @@ public enum AssistContent: Equatable {
     /// typed: いま未確定で表示されている文字列 (先読みのうち、すでに打った部分を薄く見せる)
     case ghost(Ghost, typed: String)
     case candidates([String], selected: Int)
-    /// 確定済みの文章への直しの提案。keys は反映するキーの表示 (["tab"] か ["shift", "tab"])。
+    /// 確定済みの文章への直しの提案。keys は反映するキーの表示。
     case correction(from: String, to: String, keys: [String])
 
     public init(view: SessionView) {
