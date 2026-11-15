@@ -8,6 +8,8 @@ import TsumugiLLM
 //   tsumugi-cli predict <読みの頭> [左文脈]  続きの予測 (生の出力と確率)
 //   tsumugi-cli type <ローマ字>          セッションに打鍵を流す
 //   tsumugi-cli eval [-v] [コーパス]     先読みの省打鍵率と的中率を測る
+//   tsumugi-cli proofread <ファイル>     確定済みの文を読み直して直しの提案を出す
+//   tsumugi-cli score text|kana [-v] <文>...  文の自然さ (対数確率) を出す
 
 let args = Array(CommandLine.arguments.dropFirst())
 let root = FileManager.default.currentDirectoryPath
@@ -51,6 +53,21 @@ case "llm":
         print("llm[\(round)]: \(out ?? "nil")  [\(String(format: "%.0f", t))ms]  verified: \(verified.map(describe) ?? "NO")")
     }
     print("dict: " + (converter.convert(reading).first.map(describe) ?? "nil"))
+case "score":
+    // 例: tsumugi-cli score text|kana <文>...   文ごとの自然さ (対数確率) を出す。-v でトークンごと。
+    guard let model = ZenzModel(path: modelPath) else { fatalError("model load failed") }
+    let verbose = args.contains("-v")
+    let asReading = args[1] == "kana"
+    for text in args.dropFirst(2) where text != "-v" {
+        let r = model.score(text, as: asReading ? .reading : .text)
+        let sum = r.reduce(Float(0)) { $0 + log($1.1) }
+        print(String(format: "%8.2f  %6.2f  %2d  ", sum, sum / Float(max(1, r.count)), r.count) + text)
+        if verbose { print("      " + r.map { "\($0.0)(\(String(format: "%.2f", $0.1)))" }.joined(separator: " ")) }
+    }
+case "proofread":
+    // 例: tsumugi-cli proofread <1 行 1 文のファイル>   確定済みの文を読み直して直しの提案を出す
+    guard let model = ZenzModel(path: modelPath) else { fatalError("model load failed") }
+    try ProofreadEval.run(path: args[1], model: model, converter: converter)
 case "predict":
     guard let model = ZenzModel(path: modelPath) else { fatalError("model load failed") }
     let prefix = args.count > 1 ? args[1] : ""

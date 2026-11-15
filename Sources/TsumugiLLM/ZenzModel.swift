@@ -158,4 +158,71 @@ public final class ZenzModel: NeuralAssist {
         }
         return out
     }
+
+    /// 採点のしかた。
+    public enum Scoring {
+        /// 文章そのものの自然さ。
+        case text
+        /// 読み (かな) の並びの自然さ。
+        case reading
+        /// 与えた読みが、その表記に変換される確からしさ。
+        case surface(reading: String)
+    }
+
+    /// 文の各トークンをモデルがどれだけ確からしいと見ているか (確率) を返す。
+    public func score(_ text: String, leftContext: String = "", as scoring: Scoring) -> [(String, Float)] {
+        lock.lock(); defer { lock.unlock() }
+        let head: String, body: String
+        switch scoring {
+        case .text: (head, body) = (Self.contextTag + String(leftContext.suffix(Self.contextLength)), text)
+        case .reading: (head, body) = (contextPrefix(leftContext) + Self.inputTag, text.katakana)
+        case .surface(let reading): (head, body) = (contextPrefix(leftContext) + Self.inputTag + reading.katakana + Self.outputTag, text)
+        }
+        let start = tokenize(head).count
+        var tokens = tokenize(head + body)
+        if case .surface = scoring { tokens.append(eos) }
+        guard tokens.count > start, decode(tokens, logitsFrom: start - 1) else { return [] }
+        var out: [(String, Float)] = []
+        for i in start..<tokens.count {
+            guard let l = logits(at: i - 1) else { break }
+            out.append((String(decoding: piece(tokens[i]), as: UTF8.self), llm.probability(of: tokens[i], in: l)))
+        }
+        return out
+    }
+
+    /// 対数確率の合計。採点できなければ nil。
+    public func logProbability(_ text: String, leftContext: String = "", as scoring: Scoring) -> Float? {
+        let r = score(text, leftContext: leftContext, as: scoring)
+        return r.isEmpty ? nil : r.reduce(Float(0)) { $0 + log(max($1.1, 1e-30)) }
+    }
+}
+
+// MARK: 読み直し
+
+extension ZenzModel: ProofreadScorer {
+    /// 読み全体を変換し直す。打鍵中の変換とは別に動くので、そちらの当て推量 (lastOutput) には触れない。
+    public func reconvert(reading: String, leftContext: String, isCancelled: () -> Bool) -> String? {
+        lock.lock(); defer { lock.unlock() }
+        var tokens = tokenize(contextPrefix(leftContext) + Self.inputTag + reading.katakana + Self.outputTag)
+        var out: [llama_token] = []
+        let limit = reading.count * 2 + 8
+        while out.count < limit {
+            if isCancelled() { return nil }
+            guard let l = logits(tokens) else { return nil }
+            let tok = argmax(l).0
+            if tok == eos { break }
+            out.append(tok)
+            tokens.append(tok)
+        }
+        let s = String(decoding: out.flatMap(piece), as: UTF8.self)
+        return s.isEmpty || s.unicodeScalars.contains(where: { (0xEE00...0xEE0F).contains($0.value) || $0.value == 0xFFFD }) ? nil : s
+    }
+
+    public func logProbability(surface: String, reading: String, leftContext: String) -> Float? {
+        logProbability(surface, leftContext: leftContext, as: .surface(reading: reading))
+    }
+
+    public func logProbability(text: String, leftContext: String) -> Float? {
+        logProbability(text, leftContext: leftContext, as: .text)
+    }
 }

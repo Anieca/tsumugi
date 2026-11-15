@@ -2,6 +2,12 @@
 
 版は [Semantic Versioning](https://semver.org/lang/ja/) に従います。1.0 までは操作感や学習データの形式が変わることがあります。
 
+## [0.2.0] - 2026-11-15
+
+- 確定した文を文全体の読みで読み直し、同音の取り違えや変換し忘れ (仕様率 → 使用率、じょうで → 上で) を小さく提案する。Shift+Tab で反映。3 回見送った提案は出さなくなる。入力メニューから切れる
+- `tsumugi-cli proofread` で直しの提案を計測できる。`tsumugi-cli score` で文の自然さを見られる
+- 動きを調べる記録 (ふだんは無効) に、打ったキーの種類と直しの提案・適用を加えた
+
 ## [0.1.0] - 2026-11-15
 
 最初の公開版。
@@ -15,4 +21,5 @@
 - `install.sh` による一括インストールと更新、入力ソースの自動有効化、`scripts/uninstall.sh`
 - llama.cpp v1.0.0 (b1b770d) を使用
 
+[0.2.0]: https://github.com/Anieca/tsumugi/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Anieca/tsumugi/releases/tag/v0.1.0

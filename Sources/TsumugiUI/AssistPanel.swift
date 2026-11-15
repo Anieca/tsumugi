@@ -8,6 +8,8 @@ public enum AssistContent: Equatable {
     /// typed: いま未確定で表示されている文字列 (先読みのうち、すでに打った部分を薄く見せる)
     case ghost(Ghost, typed: String)
     case candidates([String], selected: Int)
+    /// 確定済みの文章への直しの提案。
+    case correction(from: String, to: String)
 
     public init(view: SessionView) {
         if !view.candidates.isEmpty {
@@ -54,6 +56,37 @@ struct GhostPill: View {
             (Text(shared).foregroundColor(.secondary) + Text(rest).foregroundColor(.primary))
                 .font(.system(size: 14))
                 .lineLimit(1)
+            Keycap(label: "tab")
+        }
+        .padding(.leading, 9)
+        .padding(.trailing, 7)
+        .frame(height: 28)
+        .fixedSize()
+    }
+}
+
+/// 直しの提案。直す前を薄く、直した後をはっきりと。
+struct CorrectionPill: View {
+    let from: String
+    let to: String
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "pencil.line")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Color.orange)
+            Text(from)
+                .font(.system(size: 14))
+                .strikethrough(true, color: .secondary)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Image(systemName: "arrow.right")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.tertiary)
+            Text(to)
+                .font(.system(size: 14))
+                .lineLimit(1)
+            Keycap(label: "shift")
             Keycap(label: "tab")
         }
         .padding(.leading, 9)
@@ -121,6 +154,8 @@ struct AssistRoot: View {
             GhostPill(ghost: g, typed: typed)
         case .candidates(let items, let selected):
             CandidateList(items: items, selected: selected)
+        case .correction(let from, let to):
+            CorrectionPill(from: from, to: to)
         }
     }
 }
@@ -164,10 +199,10 @@ public final class AssistPanel {
         hosting.layoutSubtreeIfNeeded()
         let size = hosting.fittingSize
         hosting.frame = NSRect(origin: .zero, size: size)
-        if case .ghost = content {
-            effect.layer?.cornerRadius = size.height / 2
-        } else {
+        if case .candidates = content {
             effect.layer?.cornerRadius = 10
+        } else {
+            effect.layer?.cornerRadius = size.height / 2
         }
         effect.layer?.borderColor = NSColor.separatorColor.cgColor
         var origin = panel.frame.origin
@@ -199,7 +234,7 @@ public final class AssistPanel {
         let m = AssistModel()
         m.content = model.content
         let isGhost: Bool
-        if case .ghost = model.content { isGhost = true } else { isGhost = false }
+        if case .candidates = model.content { isGhost = false } else { isGhost = true }
         let shape = RoundedRectangle(cornerRadius: isGhost ? 14 : 10, style: .continuous)
         let v = AssistRoot(model: m)
             .background(dark ? Color(white: 0.17) : Color(white: 0.97))
@@ -217,7 +252,7 @@ public final class AssistPanel {
         let m = AssistModel()
         m.content = content
         let isGhost: Bool
-        if case .ghost = content { isGhost = true } else { isGhost = false }
+        if case .candidates = content { isGhost = false } else { isGhost = true }
         let bg = dark ? Color(white: 0.17) : Color(white: 0.97)
         let page = dark ? Color(white: 0.08) : Color.white
         let v = AssistRoot(model: m)

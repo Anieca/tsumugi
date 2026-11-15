@@ -53,6 +53,9 @@ public final class Engine {
 
     public var isNeuralReady: Bool { neural.model != nil }
 
+    /// 確定した文を読み直して、変換の取り違えを挙げる。
+    public private(set) lazy var proofreader: Proofreader? = converter.map { Proofreader(converter: $0, scorer: neural) }
+
     // MARK: 設定
 
     public var learningPaused: Bool {
@@ -66,6 +69,31 @@ public final class Engine {
     public var predictionEnabled: Bool {
         get { defaults.object(forKey: "predictionEnabled") as? Bool ?? true }
         set { defaults.set(newValue, forKey: "predictionEnabled") }
+    }
+
+    public var proofreadEnabled: Bool {
+        get { defaults.object(forKey: "proofreadEnabled") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "proofreadEnabled") }
+    }
+
+    // MARK: 見送った直し
+
+    /// 同じ直しを何度見せたら「見送り」とみなすか。
+    public static let correctionShowLimit = 3
+    private var shownCorrections: [String: Int] = [:]
+
+    /// もう提案しない直し (`Correction.key`)。出しても採用されなかったものを覚えておく。
+    public private(set) lazy var ignoredCorrections = Set(defaults.stringArray(forKey: "ignoredCorrections") ?? [])
+
+    /// 直しを見せたことを数える。上限まで見せても採用されなければ、以後は提案しない。
+    public func noteShown(_ correction: Correction) {
+        let n = (shownCorrections[correction.key] ?? 0) + 1
+        shownCorrections[correction.key] = n
+        guard n >= Self.correctionShowLimit else { return }
+        ignoredCorrections.insert(correction.key)
+        // 古いものから忘れる必要が出るほどは溜まらない想定だが、際限なくは持たない
+        if ignoredCorrections.count > 2000 { ignoredCorrections.removeAll() }
+        defaults.set(Array(ignoredCorrections), forKey: "ignoredCorrections")
     }
 }
 
@@ -85,6 +113,20 @@ final class NeuralProxy: NeuralAssist {
 
     func predict(readingPrefix: String, leftContext: String, habit: HabitHint?, isCancelled: () -> Bool) -> NeuralPrediction? {
         model?.predict(readingPrefix: readingPrefix, leftContext: leftContext, habit: habit, isCancelled: isCancelled)
+    }
+}
+
+extension NeuralProxy: ProofreadScorer {
+    func reconvert(reading: String, leftContext: String, isCancelled: () -> Bool) -> String? {
+        model?.reconvert(reading: reading, leftContext: leftContext, isCancelled: isCancelled)
+    }
+
+    func logProbability(surface: String, reading: String, leftContext: String) -> Float? {
+        model?.logProbability(surface: surface, reading: reading, leftContext: leftContext)
+    }
+
+    func logProbability(text: String, leftContext: String) -> Float? {
+        model?.logProbability(text: text, leftContext: leftContext)
     }
 }
 
