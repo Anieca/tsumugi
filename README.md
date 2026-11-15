@@ -23,23 +23,30 @@
 
 ## インストール (ソースから)
 
-必要なもの: macOS 13 以降、Xcode (Swift 5.9 以降)、cmake (`brew install cmake`)、python3。
+必要なもの: Apple Silicon の Mac、macOS 13 以降、Xcode (Swift 5.9 以降)、python3、cmake (なければ Homebrew で自動で入れます)。
 ダウンロードとビルドで 10 分ほどかかり、約 1.5GB の空きが要ります。
 
 ```sh
-git clone https://github.com/Anieca/tsumugi.git
-cd tsumugi
+curl -fsSL https://raw.githubusercontent.com/Anieca/tsumugi/main/install.sh | sh
+```
+
+ソースを `~/.local/src/tsumugi` に取得し、辞書・モデル・llama.cpp を用意してビルドし、
+`~/Library/Input Methods` に入れて入力ソースとして有効にします。終わったらメニューバーの入力メニューから Tsumugi を選びます。
+一覧に出ないときは一度ログアウトしてログインし直してください。
+
+- **更新**: 同じコマンドをもう一度実行する。版を指定するなら `TSUMUGI_REF=v0.1.0` を付ける
+- **削除**: `sh ~/.local/src/tsumugi/scripts/uninstall.sh` (学習内容も消すなら `--purge`)
+- メニューバーの入力メニューが開かなくなったときは `killall TextInputMenuAgent` で macOS 側のメニューを再起動する
+
+手で進める場合:
+
+```sh
+git clone https://github.com/Anieca/tsumugi.git && cd tsumugi
 make data      # Mozc 辞書 (約 97MB) と zenz モデル (約 74MB) をダウンロード
 make llama     # llama.cpp を取得してビルド (zenz 用の小さなパッチを当てる)
 make test      # テスト
-make install   # build/Tsumugi.app を作り ~/Library/Input Methods に入れて登録
+make install   # build/Tsumugi.app を作り ~/Library/Input Methods に入れて有効化
 ```
-
-インストール後、**システム設定 > キーボード > 入力ソース > 編集… > ＋ > 日本語** から Tsumugi を追加する。
-一覧に出ないときは一度ログアウトしてログインし直す。
-メニューバーの入力メニューが開かなくなったときは `killall TextInputMenuAgent` で macOS 側のメニューを再起動する。
-
-更新は `git pull && make install`、削除は `rm -rf ~/Library/Input Methods/Tsumugi.app` のあと入力ソースから外す。
 
 登録せずに試すだけなら:
 

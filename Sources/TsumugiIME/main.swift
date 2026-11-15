@@ -6,13 +6,36 @@ import TsumugiUI
 
 // Tsumugi 入力メソッドのエントリポイント。
 //   TsumugiIME             入力メソッドとして常駐する (システムが起動する)
-//   TsumugiIME --register  この .app を入力ソースとしてシステムに登録する
+//   TsumugiIME --register    この .app を入力ソースとして登録し、入力メニューに追加する
+//   TsumugiIME --unregister  入力メニューから外す
+
+/// この .app が提供する入力ソース (本体と ひらがな / 英字 の各モード)。
+func tsumugiInputSources() -> [TISInputSource] {
+    let filter = [kTISPropertyBundleID as String: Bundle.main.bundleIdentifier ?? ""] as CFDictionary
+    return (TISCreateInputSourceList(filter, true)?.takeRetainedValue() as? [TISInputSource]) ?? []
+}
+
+func isEnableCapable(_ source: TISInputSource) -> Bool {
+    guard let p = TISGetInputSourceProperty(source, kTISPropertyInputSourceIsEnableCapable) else { return false }
+    return CFBooleanGetValue(Unmanaged<CFBoolean>.fromOpaque(p).takeUnretainedValue())
+}
 
 if CommandLine.arguments.contains("--register") {
-    let url = Bundle.main.bundleURL as CFURL
-    let status = TISRegisterInputSource(url)
-    print(status == noErr ? "registered: \(Bundle.main.bundlePath)" : "register failed: \(status)")
-    exit(status == noErr ? 0 : 1)
+    let status = TISRegisterInputSource(Bundle.main.bundleURL as CFURL)
+    guard status == noErr else {
+        print("register failed: \(status)")
+        exit(1)
+    }
+    let sources = tsumugiInputSources().filter(isEnableCapable)
+    for source in sources { TISEnableInputSource(source) }
+    print("registered: \(Bundle.main.bundlePath) (\(sources.count) 個の入力ソースを有効化)")
+    exit(0)
+}
+
+if CommandLine.arguments.contains("--unregister") {
+    for source in tsumugiInputSources() { TISDisableInputSource(source) }
+    print("unregistered")
+    exit(0)
 }
 
 let connectionName = Bundle.main.infoDictionary?["InputMethodConnectionName"] as? String ?? "Tsumugi_1_Connection"

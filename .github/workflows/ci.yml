@@ -26,7 +26,7 @@ jobs:
       - name: Download dictionary and model
         run: make data
       - name: Build llama.cpp
-        run: '[ -f vendor/llama/lib/libllama.a ] || make llama'
+        run: 'make llama'
       - name: Test
         run: make test
       - name: Build input method app

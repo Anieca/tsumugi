@@ -1,5 +1,5 @@
 #!/bin/sh
-# ~/Library/Input Methods に入れて入力ソースとして登録する。
+# build/Tsumugi.app を ~/Library/Input Methods に入れ、入力ソースとして登録・有効化する。
 set -e
 cd "$(dirname "$0")/.."
 DEST="$HOME/Library/Input Methods"
@@ -8,4 +8,5 @@ pkill -x TsumugiIME 2>/dev/null || true
 rm -rf "$DEST/Tsumugi.app"
 cp -R build/Tsumugi.app "$DEST/"
 "$DEST/Tsumugi.app/Contents/MacOS/TsumugiIME" --register
-echo "システム設定 > キーボード > 入力ソース > 編集… > ＋ > 日本語 から Tsumugi を追加してください。"
+echo "入力メニュー (メニューバー) から「Tsumugi」を選ぶと使えます。"
+echo "出てこないときは一度ログアウトしてログインし直してください。"
