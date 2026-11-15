@@ -39,7 +39,7 @@ curl -fsSL https://raw.githubusercontent.com/Anieca/tsumugi/main/install.sh | sh
 `~/Library/Input Methods` に入れて入力ソースとして有効にします。終わったらメニューバーの入力メニューから Tsumugi を選びます。
 一覧に出ないときは一度ログアウトしてログインし直してください。
 
-- **更新**: 同じコマンドをもう一度実行する。版を指定するなら `TSUMUGI_REF=v0.2.0` を付ける
+- **更新**: 同じコマンドをもう一度実行する。版を指定するなら `TSUMUGI_REF=v0.2.1` を付ける
 - **削除**: `sh ~/.local/src/tsumugi/scripts/uninstall.sh` (学習内容も消すなら `--purge`)
 - メニューバーの入力メニューが開かなくなったときは `killall TextInputMenuAgent` で macOS 側のメニューを再起動する
 

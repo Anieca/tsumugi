@@ -221,14 +221,31 @@ final class TsumugiInputController: IMKInputController {
                           self.textBeforeCursor()?.hasSuffix(found.tail) == true, let client = self.textClient else { return }
                     self.correction = found
                     engine.noteShown(found)
-                    ContextProbe.trace("直しを提案\t\(found.from.count) 字")
-                    let sel = client.selectedRange()
-                    var rect = client.firstRect(forCharacterRange: NSRange(location: sel.location, length: 0), actualRange: nil)
-                    if rect == .zero { client.attributes(forCharacterIndex: 0, lineHeightRectangle: &rect) }
-                    assistPanel.show(.correction(from: found.from, to: found.to), at: rect == .zero ? nil : rect)
+                    let rect = self.caretRect(client)
+                    ContextProbe.trace("直しを提案\t\(found.from.count) 字\tカーソルの位置 \(rect.map { "\(Int($0.minX)),\(Int($0.minY))" } ?? "不明")")
+                    assistPanel.show(.correction(from: found.from, to: found.to), at: rect)
                 }
             }
         }
+    }
+
+    /// 何も入力していないときのカーソルの矩形 (スクリーン座標)。わからなければ nil。
+    /// 長さ 0 の範囲を尋ねると画面の外の矩形を返すアプリがある (Electron) ので、直前の 1 文字の矩形から求める。
+    private func caretRect(_ client: IMKTextInput) -> NSRect? {
+        func onScreen(_ r: NSRect) -> Bool {
+            r.height >= 4 && NSScreen.screens.contains { $0.frame.insetBy(dx: -1, dy: -1).contains(NSPoint(x: r.minX, y: r.midY)) }
+        }
+        let sel = client.selectedRange()
+        guard sel.location != NSNotFound else { return nil }
+        if sel.location > 0 {
+            let r = client.firstRect(forCharacterRange: NSRange(location: sel.location - 1, length: 1), actualRange: nil)
+            if onScreen(r) { return NSRect(x: r.maxX, y: r.minY, width: 1, height: r.height) }
+        }
+        let r = client.firstRect(forCharacterRange: NSRange(location: sel.location, length: 0), actualRange: nil)
+        if onScreen(r) { return r }
+        var a = NSRect.zero
+        client.attributes(forCharacterIndex: 0, lineHeightRectangle: &a)
+        return onScreen(a) ? a : nil
     }
 
     /// 直しを入力先に反映する。直す箇所からカーソルまでをまとめて置き換えるので、カーソルは元の位置に残る。
@@ -241,7 +258,16 @@ final class TsumugiInputController: IMKInputController {
         guard sel.location != NSNotFound, sel.length == 0, sel.location >= length else { return false }
         let range = NSRange(location: sel.location - length, length: length)
         guard client.attributedSubstring(from: range)?.string == c.tail else { return false }
-        client.insertText(c.fixedTail, replacementRange: range)
+        // 範囲を指定した書き換えだけだと、Electron 系のアプリは「入力メソッドはこのキーを使わなかった」とみなし、
+        // Shift+Tab をアプリ側でも処理してしまう (フォーカスが前の欄へ移る)。末尾の 2 文字を、ふつうの確定と
+        // 同じ形 (範囲の指定なし) で入れると、キーは入力メソッドが使ったものとして扱われる。
+        // (未確定文字列として差し替える方法は、Electron が範囲の指定を無視するので使えない。)
+        let fixed = Array(c.fixedTail)
+        let split = fixed.count > 2 ? fixed.count - 2 : 0
+        client.insertText(String(fixed[..<split]), replacementRange: range)
+        if split < fixed.count {
+            client.insertText(String(fixed[split...]), replacementRange: NSRange(location: NSNotFound, length: NSNotFound))
+        }
         ContextProbe.trace("直しを適用")
         assistPanel.hide()
         // 範囲を指定した置き換えを正しく扱わないアプリがありうる。置き換えたあとの文章を読み直し、
@@ -251,7 +277,8 @@ final class TsumugiInputController: IMKInputController {
             guard let self, self.proofTicket.value == ticket, let client = self.textClient else { return }
             let now = client.selectedRange()
             let n = (c.fixedTail as NSString).length
-            let ok = now.location != NSNotFound && now.location >= n
+            // カーソルの位置も見る (末尾に足されただけでも、末尾の文字列は一致してしまうため)
+            let ok = now.location == sel.location - length + n
                 && client.attributedSubstring(from: NSRange(location: now.location - n, length: n))?.string == c.fixedTail
             if ok {
                 self.scheduleProofread()   // 同じ文にまだあれば続けて出す

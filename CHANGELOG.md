@@ -2,8 +2,11 @@
 
 版は [Semantic Versioning](https://semver.org/lang/ja/) に従います。1.0 までは操作感や学習データの形式が変わることがあります。
 
-## [Unreleased]
+## [0.2.1] - 2026-11-15
 
+- Electron 系のアプリ (チャット欄など) で、直しの提案が画面の外に出て見えなかったのを修正
+- Electron 系のアプリで、直しを反映する Shift+Tab がアプリにも伝わり、フォーカスが前の欄へ移っていたのを修正
+- 反映のあとの確認で、カーソルの位置も見るようにした (末尾に足されただけの失敗を見逃さない)
 - `tsumugi-cli proofread --inject`: 同音の取り違えを仕込んで、見つけて元に戻せるかを測る。しきい値を決めたあとの別の文章 2,160 文での結果を docs/DESIGN.md に追記 (動作は 0.2.0 と同じ)
 
 ## [0.2.0] - 2026-11-15
@@ -25,5 +28,6 @@
 - `install.sh` による一括インストールと更新、入力ソースの自動有効化、`scripts/uninstall.sh`
 - llama.cpp v1.0.0 (b1b770d) を使用
 
+[0.2.1]: https://github.com/Anieca/tsumugi/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Anieca/tsumugi/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Anieca/tsumugi/releases/tag/v0.1.0
