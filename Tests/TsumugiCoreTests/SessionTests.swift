@@ -68,9 +68,13 @@ final class SessionTests: XCTestCase {
     func testCandidateSelectionLearns() {
         type("kouseiwokakuninsuru")
         let first = session.view.markedText
+        // 1 回目の Space は候補を開くだけ。いまの変換を選んだまま
+        session.handle(.space)
+        XCTAssertEqual(session.view.focus, 0)
+        XCTAssertEqual(session.view.candidateIndex, 0)
+        XCTAssertEqual(session.view.markedText, first)
         session.handle(.space)
         let v = session.view
-        XCTAssertEqual(v.focus, 0)
         XCTAssertEqual(v.candidateIndex, 1)
         let picked = v.candidates[1]
         XCTAssertNotEqual(picked, v.candidates[0])
@@ -80,6 +84,53 @@ final class SessionTests: XCTestCase {
         // 次からは選んだ表記が最初に出る
         type("kouseiwokakuninsuru")
         XCTAssertTrue(session.view.markedText.hasPrefix(picked))
+    }
+
+    /// Space を 1 回押して Enter しても、ライブ変換のまま確定し、何も覚えない。
+    func testSingleSpaceThenEnterKeepsLiveConversion() {
+        type("kono")
+        let live = session.view.markedText
+        session.handle(.space)
+        session.handle(.enter)
+        XCTAssertEqual(commits, [live])
+        XCTAssertEqual(user.stats.words, 0)
+    }
+
+    /// 選んで確定した変換を、すぐに同じ読みで別の表記に直したら、前の選択を忘れる。
+    func testQuickRedoUnlearnsHastyChoice() {
+        type("kisya")
+        let original = session.view.markedText
+        session.handle(.space)
+        session.handle(.space)
+        let hasty = session.view.candidates[session.view.candidateIndex]
+        XCTAssertNotEqual(hasty, original)
+        session.handle(.enter)
+        XCTAssertEqual(commits.last, hasty)
+
+        // 打ち直すと覚えた表記が出るので、元の表記を選び直す
+        clock += 10
+        type("kisya")
+        XCTAssertEqual(session.view.markedText, hasty)
+        session.handle(.space)
+        let i = try! XCTUnwrap(session.view.candidates.firstIndex(of: original))
+        for _ in 0..<i { session.handle(.space) }
+        session.handle(.enter)
+        XCTAssertEqual(commits.last, original)
+        XCTAssertFalse(user.learnedWords(reading: "きしゃ").contains { $0.word.surface == hasty })
+
+        // 時間が経ってから直したときは、前の選択も残す (気が変わっただけかもしれない)
+        type("kisya")
+        session.handle(.space)
+        let j = try! XCTUnwrap(session.view.candidates.firstIndex(of: hasty))
+        for _ in 0..<j { session.handle(.space) }
+        session.handle(.enter)
+        clock += Session.redoWindow + 1
+        type("kisya")
+        session.handle(.space)
+        let k = try! XCTUnwrap(session.view.candidates.firstIndex(of: original))
+        for _ in 0..<k { session.handle(.space) }
+        session.handle(.enter)
+        XCTAssertTrue(user.learnedWords(reading: "きしゃ").contains { $0.word.surface == hasty })
     }
 
     func testSegmentResizeAndEscape() {

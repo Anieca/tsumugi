@@ -101,6 +101,16 @@ public final class UserModel {
         scheduleSave()
     }
 
+    /// 選び間違いだった変換を 1 回分取り消す。1 回しか選んでいなければ忘れる。
+    public func unlearnChoice(reading: String, surface: String) {
+        lock.lock(); defer { lock.unlock() }
+        guard var list = snap.words[reading], let i = list.firstIndex(where: { $0.surface == surface }) else { return }
+        list[i].count -= 1
+        if list[i].count <= 0 { list.remove(at: i) }
+        snap.words[reading] = list.isEmpty ? nil : list
+        scheduleSave()
+    }
+
     /// 読みが一致する学習済みの語と、学習ボーナスを引いた実効コスト。
     public func learnedWords(reading: String) -> [(word: LearnedWord, cost: Int32)] {
         lock.lock(); defer { lock.unlock() }

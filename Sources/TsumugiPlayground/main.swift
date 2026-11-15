@@ -149,7 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ("1-live", Array("kyouhakaiginosiryouwo").map(Key.char)),
             ("2-ghost", [.enter] + Array("arigatougo").map(Key.char)),
             ("3-accepted", [.tab] + Array("kousei").map(Key.char)),
-            ("4-candidates", [.space, .space]),
+            ("4-candidates", [.space, .space, .space]),
             ("5-segments", [.enter] + Array("kyouhaisyaniiku").map(Key.char) + [.right, .shiftLeft]),
         ]
         var index = 0

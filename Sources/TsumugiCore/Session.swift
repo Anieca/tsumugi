@@ -184,6 +184,7 @@ public final class Session {
             refreshComposition()
         case .enter:
             finalizeLive()
+            undoHastyChoices(live)
             commit(text: live.map(\.surface).joined(), reading: composer.kana)
         case .tab:
             if let g = ghost { commit(text: g.text, reading: g.reading) }
@@ -200,9 +201,10 @@ public final class Session {
             composer.input(" ")
             refreshComposition()
         case .space, .shiftSpace, .down:
+            // 1 回目は候補を開くだけで、いまの変換を選んだままにする (合っている変換を押し流さない)。
+            // 次の候補へ進むのは 2 回目から。
             finalizeLive()
             enterSelecting()
-            moveCandidate(1)
         case .left, .right, .shiftLeft, .shiftRight:
             finalizeLive()
             enterSelecting()
@@ -457,11 +459,33 @@ public final class Session {
     }
 
     private func commitSelection() {
+        undoHastyChoices(segments)
+        let now = userModel.now()
         for (i, seg) in segments.enumerated() where explicit[i] {
             let top = converter.segmentCandidates(seg.reading, limit: 12).map(\.cost).min() ?? seg.cost
             userModel.learnChoice(reading: seg.reading, surface: seg.surface, lid: seg.lid, rid: seg.rid, cost: seg.cost, topCost: top)
+            recentChoices.append((seg.reading, seg.surface, now))
         }
         commit(text: segments.map(\.surface).joined(), reading: segments.map(\.reading).joined())
+    }
+
+    /// 選んで覚えた変換を、この秒数のうちに同じ読みで別の表記に直したら、選び間違いとして忘れる。
+    public static let redoWindow: Double = 60
+    private var recentChoices: [(reading: String, surface: String, time: Double)] = []
+
+    /// 少し前に選んだ変換と同じ読みを、別の表記で確定しようとしていたら、前の選択を学習から外す。
+    /// 例: Space の押しすぎで「この」を「子の」で確定 → 消して打ち直し「この」で確定 → 「子の」を忘れる。
+    private func undoHastyChoices(_ committed: [Segment]) {
+        let now = userModel.now()
+        recentChoices.removeAll { now - $0.time > Self.redoWindow }
+        guard !recentChoices.isEmpty else { return }
+        for seg in committed {
+            recentChoices.removeAll { choice in
+                guard choice.reading == seg.reading, choice.surface != seg.surface else { return false }
+                userModel.unlearnChoice(reading: choice.reading, surface: choice.surface)
+                return true
+            }
+        }
     }
 
     // MARK: 確定
