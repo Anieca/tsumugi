@@ -66,8 +66,13 @@ case "score":
     }
 case "proofread":
     // 例: tsumugi-cli proofread <1 行 1 文のファイル>   確定済みの文を読み直して直しの提案を出す
+    //     --inject を付けると、同音の取り違えを仕込んで見つけられるかを測る (しきい値を決める用)
     guard let model = ZenzModel(path: modelPath) else { fatalError("model load failed") }
-    try ProofreadEval.run(path: args[1], model: model, converter: converter)
+    if args.contains("--inject") {
+        try ProofreadEval.inject(path: args[1], model: model, converter: converter)
+    } else {
+        try ProofreadEval.run(path: args[1], model: model, converter: converter)
+    }
 case "predict":
     guard let model = ZenzModel(path: modelPath) else { fatalError("model load failed") }
     let prefix = args.count > 1 ? args[1] : ""

@@ -21,16 +21,19 @@ public struct Correction: Equatable {
     public var fixedTail: String
     /// 読みに対する確からしさが、直すとどれだけ上がるか。
     public var gain: Float
+    /// 文章としての自然さが、直すとどれだけ上がるか。
+    public var textGain: Float
 
     /// 同じ提案かどうかを見分ける鍵 (見送った提案を覚えるのに使う)。
     public var key: String { from + "→" + to }
 
-    public init(from: String, to: String, tail: String, fixedTail: String, gain: Float) {
+    public init(from: String, to: String, tail: String, fixedTail: String, gain: Float, textGain: Float = 0) {
         self.from = from
         self.to = to
         self.tail = tail
         self.fixedTail = fixedTail
         self.gain = gain
+        self.textGain = textGain
     }
 }
 
@@ -61,6 +64,7 @@ public final class Proofreader {
         var range: Range<Int>      // 一続きの日本語 (run) の中での位置
         var replacement: String
         var gain: Float
+        var textGain: Float
     }
 
     private static let terminators: Set<Character> = ["。", "！", "？", "!", "?", "\n", "\r"]
@@ -73,6 +77,13 @@ public final class Proofreader {
     /// - Parameter ignoring: 提案しない直しの鍵 (`Correction.key`)。
     /// - Returns: いちばん確からしい直し。なければ nil。
     public func check(_ text: String, ignoring: Set<String> = [], isCancelled: () -> Bool = { false }) -> Correction? {
+        candidates(text, isCancelled: isCancelled)
+            .filter { $0.gain >= minimumGain && $0.textGain >= minimumTextGain && !ignoring.contains($0.key) }
+            .max { $0.gain < $1.gain }
+    }
+
+    /// 最後の文の、変換し直すと変わる箇所すべて (しきい値で絞る前)。計測用にも使う。
+    public func candidates(_ text: String, isCancelled: () -> Bool = { false }) -> [Correction] {
         let chars = Array(text)
         var end = chars.count
         while end > 0, Self.terminators.contains(chars[end - 1]) || chars[end - 1].isWhitespace { end -= 1 }
@@ -80,7 +91,7 @@ public final class Proofreader {
         while start > 0, !Self.terminators.contains(chars[start - 1]), end - start < Self.maxSentence { start -= 1 }
         let cutMidway = start > 0 && !Self.terminators.contains(chars[start - 1]) || start == 0 && chars.count >= Self.contextLimit
 
-        var best: Correction?
+        var all: [Correction] = []
         var i = start
         var first = true
         while i < end {
@@ -91,7 +102,7 @@ public final class Proofreader {
             // 途中から始まっている語は読みを取り違えるので見ない
             if first && cutMidway && i == start { continue }
             guard j - i >= 3 else { continue }
-            if isCancelled() { return nil }
+            if isCancelled() { return [] }
             let run = Array(chars[i..<j])
             for f in found(run: String(run), left: String(chars[..<i].suffix(100)), isCancelled: isCancelled) {
                 let lo = max(0, f.range.lowerBound - 1), hi = min(run.count, f.range.upperBound + 1)
@@ -100,11 +111,11 @@ public final class Proofreader {
                     to: String(run[lo..<f.range.lowerBound]) + f.replacement + String(run[f.range.upperBound..<hi]),
                     tail: String(chars[(i + f.range.lowerBound)...]),
                     fixedTail: f.replacement + String(chars[(i + f.range.upperBound)...]),
-                    gain: f.gain)
-                if !ignoring.contains(c.key), best == nil || c.gain > best!.gain { best = c }
+                    gain: f.gain, textGain: f.textGain)
+                all.append(c)
             }
         }
-        return best
+        return all
     }
 
     private func found(run: String, left: String, isCancelled: () -> Bool) -> [Found] {
@@ -137,9 +148,9 @@ public final class Proofreader {
         for h in Self.hunks(a, Array(again)).prefix(6) {
             if isCancelled() { return nil }
             let fixed = String(a[..<h.range.lowerBound]) + h.replacement + String(a[h.range.upperBound...])
-            guard let p = scorer.logProbability(surface: fixed, reading: reading, leftContext: left), p - base >= minimumGain,
-                  let t = scorer.logProbability(text: fixed, leftContext: left), t - baseText >= minimumTextGain else { continue }
-            out.append(Found(range: h.range, replacement: h.replacement, gain: p - base))
+            guard let p = scorer.logProbability(surface: fixed, reading: reading, leftContext: left),
+                  let t = scorer.logProbability(text: fixed, leftContext: left) else { continue }
+            out.append(Found(range: h.range, replacement: h.replacement, gain: p - base, textGain: t - baseText))
         }
         return out
     }
@@ -152,7 +163,7 @@ public final class Proofreader {
     }
 
     /// 文章の読み (ひらがな) を推定する。確定済みの文章には読みが残っていないので、OS の形態素解析に尋ねる。
-    static func reading(of text: String) -> String {
+    public static func reading(of text: String) -> String {
         let ns = text as NSString
         let tok = CFStringTokenizerCreate(nil, ns, CFRangeMake(0, ns.length), kCFStringTokenizerUnitWordBoundary,
                                           Locale(identifier: "ja") as CFLocale)

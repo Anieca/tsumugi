@@ -77,6 +77,17 @@ final class ProofreaderTests: XCTestCase {
         XCTAssertNil(proofreader.check("CPUの仕様率を見たい"))
     }
 
+    func testCandidatesAreNotFilteredByThreshold() {
+        // しきい値に届かない候補も、計測用には伸びつきで返す
+        scorer.surface["の使用率を見たい"] = -9
+        scorer.text["の使用率を見たい"] = -9.5
+        XCTAssertNil(proofreader.check("CPUの仕様率を見たい"))
+        let all = proofreader.candidates("CPUの仕様率を見たい")
+        XCTAssertEqual(all.map(\.to), ["の使用率"])
+        XCTAssertEqual(all.first?.gain, 1)
+        XCTAssertEqual(all.first?.textGain, 0.5)
+    }
+
     func testIgnoredCorrectionIsNotSuggested() throws {
         let c = try XCTUnwrap(proofreader.check("CPUの仕様率を見たい"))
         XCTAssertNil(proofreader.check("CPUの仕様率を見たい", ignoring: [c.key]))
