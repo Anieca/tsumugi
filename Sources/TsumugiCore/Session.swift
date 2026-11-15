@@ -112,6 +112,18 @@ public final class Session {
 
     public var isComposing: Bool { mode != .idle }
 
+    /// 英字入力モード (英数キー)。入力中に切り替えても確定せず、以降の打鍵を半角のまま足す。
+    /// 何も入力していないときは、打鍵はアプリへそのまま渡す。
+    public private(set) var directInput = false
+
+    public func setDirectInput(_ on: Bool) {
+        guard on != directInput else { return }
+        directInput = on
+        composer.direct = on
+        if on { dismissGhost() }
+        if mode == .composing { refreshComposition() }
+    }
+
     // MARK: キー入力
 
     /// - Returns: キーを処理したら true。false のときは入力先のアプリに渡す。
@@ -125,6 +137,12 @@ public final class Session {
     }
 
     private func handleIdle(_ key: Key) -> Bool {
+        if directInput {
+            dismissGhost()
+            leftContext = ""
+            leftReading = ""
+            return false
+        }
         switch key {
         case .tab:
             guard let g = ghost else { return false }
@@ -178,6 +196,9 @@ public final class Session {
                 composer.clear()
                 refreshComposition()
             }
+        case .space where directInput, .shiftSpace where directInput:
+            composer.input(" ")
+            refreshComposition()
         case .space, .shiftSpace, .down:
             finalizeLive()
             enterSelecting()
@@ -253,7 +274,7 @@ public final class Session {
         }
         let reading = composer.kana
         live = reading.isEmpty ? [] : (converter.convert(reading).first?.segments ?? [])
-        if ghostSuppressed || !predictionEnabled {
+        if ghostSuppressed || !predictionEnabled || directInput {
             ghost = nil
         } else if composer.pending.isEmpty {
             if let phrase = userModel.completePhrase(readingPrefix: reading) {
@@ -298,7 +319,7 @@ public final class Session {
         guard let neural, !reading.isEmpty else { return }
         let context = leftContext
         let habit = habitHint()
-        let wantsPrediction = predict && predictionEnabled && ghost == nil && !ghostSuppressed && composer.pending.isEmpty
+        let wantsPrediction = predict && predictionEnabled && !directInput && ghost == nil && !ghostSuppressed && composer.pending.isEmpty
         let converter = self.converter
         let cancelled = { [weak self] in !(self?.isCurrent(gen) ?? false) }
 

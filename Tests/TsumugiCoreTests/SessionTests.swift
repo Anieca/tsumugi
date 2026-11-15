@@ -231,6 +231,41 @@ final class SessionTests: XCTestCase {
         XCTAssertFalse(Romaji.isTyping("k", toward: "さ"))
         XCTAssertTrue(Romaji.isTyping("", toward: ""))
     }
+
+    /// 入力中に英数へ切り替えても確定せず、英字を半角のまま足し、かなに戻ればローマ字に戻る。
+    func testSwitchingToLatinKeepsComposition() {
+        type("kore")
+        session.setDirectInput(true)
+        XCTAssertTrue(session.isComposing)
+        XCTAssertTrue(commits.isEmpty)
+        type("iPhone")
+        session.handle(.space)
+        type("15,")
+        XCTAssertEqual(session.view.markedText, "これiPhone 15,")
+        session.setDirectInput(false)
+        type("noke-su")
+        XCTAssertTrue(session.view.markedText.hasPrefix("これiPhone 15,"))
+        XCTAssertTrue(session.view.markedText.hasSuffix("ケース"), session.view.markedText)
+        session.handle(.enter)
+        XCTAssertEqual(commits.count, 1)
+        XCTAssertTrue(commits[0].hasPrefix("これiPhone 15,"))
+    }
+
+    /// 打ちかけのローマ字は切り替えた時点で文字にする。何も入力していなければ打鍵はアプリへ。
+    func testLatinModeFlushesPendingAndPassesThroughWhenIdle() {
+        type("kan")
+        session.setDirectInput(true)
+        XCTAssertFalse(session.view.markedText.contains("n"), session.view.markedText)  // 「かん」として変換される
+        session.handle(.backspace)
+        session.handle(.backspace)
+        XCTAssertFalse(session.isComposing)
+        XCTAssertFalse(session.handle(.char("a")))
+        XCTAssertFalse(session.handle(.space))
+        XCTAssertNil(session.view.ghost)
+        session.setDirectInput(false)
+        type("a")
+        XCTAssertEqual(session.view.markedText, "あ")
+    }
 }
 
 /// 呼ばれ方を記録するだけの LLM 役。

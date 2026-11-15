@@ -102,7 +102,20 @@ public struct Composer: Equatable {
     /// 大文字を打つと、その未確定文字列の間は英字をそのまま入力する (例: "Apple")。
     private var latinMode = false
 
+    /// 英字入力モード。入力中に英数キーで切り替えたとき、確定せずに打鍵をそのまま (半角で) 足していく。
+    /// かなに戻すとローマ字入力に戻る。clear() では変わらない。
+    public var direct = false {
+        didSet {
+            guard direct != oldValue else { return }
+            if direct { flush() } else { latinMode = false }
+        }
+    }
+
     public mutating func input(_ c: Character) {
+        if direct {
+            emit(String(c), raw: String(c))
+            return
+        }
         if c.isUppercase, c.isASCII {
             flush()
             latinMode = true

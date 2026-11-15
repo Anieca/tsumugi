@@ -91,7 +91,12 @@ final class TsumugiInputController: IMKInputController {
         // 英数 (102) / かな (104): モードの切り替えはシステムが済ませている。
         // このキーイベントは文字として空白を持つので、アプリへ流すと空白が入力されてしまう。
         if event.keyCode == 102 || event.keyCode == 104 { return true }
-        guard let session, !directInput else { return false }
+        guard let session else { return false }
+        // 英字モードで何も入力していなければ、打鍵はそのままアプリへ
+        if directInput && !session.isComposing {
+            assistPanel.hide()
+            return false
+        }
         guard let key = KeyMapping.key(for: event) else {
             // ショートカットなどはアプリへ。先読みは消しておく
             if !session.isComposing { assistPanel.hide() }
@@ -103,13 +108,14 @@ final class TsumugiInputController: IMKInputController {
     }
 
     /// 英数 / かな キーや入力メニューでのモード切り替え。
+    /// 入力中の文字列は確定しない (英字モードでは続く打鍵を半角のまま足し、Enter でまとめて確定する)。
     override func setValue(_ value: Any!, forTag tag: Int, client sender: Any!) {
         if let mode = value as? String {
             let roman = mode == Self.romanMode
             if roman != directInput {
-                session?.commitAll()
-                render()
                 directInput = roman
+                session?.setDirectInput(roman)
+                render()
             }
         }
         super.setValue(value, forTag: tag, client: sender)
