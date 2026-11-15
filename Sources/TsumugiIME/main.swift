@@ -72,10 +72,14 @@ final class TsumugiInputController: IMKInputController {
     private func textBeforeCursor() -> String? {
         guard let client = textClient else { return nil }
         let sel = client.selectedRange()
+        var text: String?
         // 文章を読めないアプリは位置 0 を返すことがあるので、0 は「わからない」として扱う
-        guard sel.location != NSNotFound, sel.location > 0 else { return nil }
-        let n = min(sel.location, 300)
-        return client.attributedSubstring(from: NSRange(location: sel.location - n, length: n))?.string
+        if sel.location != NSNotFound, sel.location > 0 {
+            let n = min(sel.location, 300)
+            text = client.attributedSubstring(from: NSRange(location: sel.location - n, length: n))?.string
+        }
+        ContextProbe.record(app: client.bundleIdentifier(), location: sel.location, read: text?.count)
+        return text
     }
 
     private var textClient: IMKTextInput? { client() }
@@ -245,6 +249,25 @@ final class TsumugiInputController: IMKInputController {
         NSApp.activate(ignoringOtherApps: true)
         if alert.runModal() == .alertFirstButtonReturn {
             Engine.shared.userModel.forgetAll()
+        }
+    }
+}
+
+/// どのアプリで文章を読めているかを調べるための記録。文章そのものは書き出さず、文字数だけを残す。
+/// `defaults write io.github.anieca.inputmethod.Tsumugi ContextProbe -bool YES` で有効になる。
+enum ContextProbe {
+    private static let enabled = UserDefaults.standard.bool(forKey: "ContextProbe")
+    private static let url = UserModel.defaultURL().deletingLastPathComponent().appendingPathComponent("context-probe.log")
+
+    static func record(app: String?, location: Int, read: Int?) {
+        guard enabled else { return }
+        let loc = location == NSNotFound ? "不明" : String(location)
+        let line = "\(ISO8601DateFormatter().string(from: Date()))\t\(app ?? "?")\t位置 \(loc)\t\(read.map { "\($0) 字" } ?? "読めず")\n"
+        guard let data = line.data(using: .utf8) else { return }
+        if let h = try? FileHandle(forWritingTo: url) {
+            h.seekToEndOfFile(); h.write(data); try? h.close()
+        } else {
+            try? data.write(to: url)
         }
     }
 }

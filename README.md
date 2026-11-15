@@ -18,6 +18,7 @@
 
 - 変換・予測・学習はすべて Mac の中で行います。入力内容をネットワークに送る処理はありません。
 - 先読みの精度を上げるため、入力先のカーソルより前の文章 (最大 300 字) を文脈として読みます。メモリ上で使うだけで、保存しません。
+  - どのアプリで読めているかを調べたいときは `defaults write io.github.anieca.inputmethod.Tsumugi ContextProbe -bool YES` を実行して入力メソッドを再起動すると、アプリ名・カーソル位置・読めた文字数だけを `~/Library/Application Support/Tsumugi/context-probe.log` に記録します (文章そのものは記録しません。ふだんは無効)。
 - 学習内容は `~/Library/Application Support/Tsumugi/user_model.json` (本人のみ読み書き可) の 1 ファイルだけです。
 - 入力メニューから学習の一時停止と全消去ができます。パスワード欄では macOS の仕様で Tsumugi は呼ばれません。
 
