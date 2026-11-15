@@ -63,6 +63,15 @@ public final class Session {
     /// テスト用: LLM の処理を呼び出し元スレッドで同期実行する。
     public var runsNeuralInline = false
 
+    /// 日本語モードのまま打った英単語を見分ける (nil なら見分けない)。
+    public var mixed: MixedSegmenter?
+    /// いまの打鍵列の切り分け。英字の区間がなければ nil。
+    private var mixedPlan: MixedPlan?
+    /// 英数キーで「ここは英字」と指定した区間 (打鍵列の中の位置)。
+    private var pins: [Range<Int>] = []
+    /// 英数キーを続けて押したときの、語のはじまりの候補と、いま選んでいる番号。
+    private var pinCycle: (starts: [Int], index: Int, end: Int)?
+
     private var mode = Mode.idle
     private var composer = Composer()
     private var live: [Segment] = []
@@ -99,7 +108,8 @@ public final class Session {
             break
         case .composing:
             v.segments = live.map(\.surface)
-            if !composer.pending.isEmpty { v.segments.append(composer.pending) }
+            let pending = mixedPlan?.pending ?? composer.pending
+            if !pending.isEmpty { v.segments.append(pending) }
         case .selecting:
             v.segments = segments.map(\.surface)
             v.focus = focus
@@ -177,15 +187,20 @@ public final class Session {
     private func handleComposing(_ key: Key) -> Bool {
         switch key {
         case .char(let c):
+            pinCycle = nil
             composer.input(c)
             refreshComposition()
         case .backspace:
+            pinCycle = nil
             composer.backspace()
+            let length = composer.raw.count
+            pins.removeAll { $0.upperBound > length }
             refreshComposition()
         case .enter:
             finalizeLive()
             undoHastyChoices(live)
-            commit(text: live.map(\.surface).joined(), reading: composer.kana)
+            learnLatin(live)
+            commit(text: live.map(\.surface).joined(), reading: commitReading(live))
         case .tab:
             if let g = ghost { commit(text: g.text, reading: g.reading) }
         case .escape:
@@ -195,6 +210,8 @@ public final class Session {
                 bumpGeneration()
             } else {
                 composer.clear()
+                pins = []
+                pinCycle = nil
                 refreshComposition()
             }
         case .space where directInput, .shiftSpace where directInput:
@@ -210,6 +227,8 @@ public final class Session {
             enterSelecting()
             if key == .left { focus = segments.count - 1; loadCandidates() }
             if key == .shiftLeft || key == .shiftRight { _ = handleSelecting(key) }
+        case .latin where mixed != nil && !directInput:
+            pinTail()
         case .hiragana, .katakana, .latin:
             finalizeLive()
             transliterate(key)
@@ -217,6 +236,82 @@ public final class Session {
             break
         }
         return true
+    }
+
+    /// 英数キー: 末尾を英単語として扱う。続けて押すと、語のはじまりを別の候補に変える。
+    /// 候補が尽きたら、これまでどおり全体を英字にする。
+    private func pinTail() {
+        guard let mixed else { return }
+        let raw = composer.raw
+        if var cycle = pinCycle, cycle.end == raw.count {
+            pins.removeAll { $0.upperBound == cycle.end }
+            cycle.index += 1
+            guard cycle.index < cycle.starts.count else {
+                pinCycle = nil
+                finalizeLive()
+                transliterate(.latin)
+                return
+            }
+            pinCycle = cycle
+            pins.append(cycle.starts[cycle.index]..<cycle.end)
+        } else {
+            let fixed = pins.filter { $0.upperBound < raw.count }
+            let starts = mixed.tailStarts(raw: raw, pins: fixed)
+            guard let first = starts.first else {
+                finalizeLive()
+                transliterate(.latin)
+                return
+            }
+            pins = fixed + [first..<raw.count]
+            pinCycle = (starts, 0, raw.count)
+        }
+        refreshComposition()
+    }
+
+    private static func isLatin(_ seg: Segment) -> Bool {
+        !seg.reading.isEmpty && seg.reading.allSatisfy { $0.isASCII && ($0.isLetter || $0 == "'") }
+    }
+
+    /// 確定した英単語を語彙に入れる。自分で英字だと示した語 (大文字・英数キー) は、すぐ使えるようにする。
+    private func learnLatin(_ committed: [Segment]) {
+        guard let mixed, !userModel.isPaused else { return }
+        var at = 0
+        let raw = Array(composer.raw)
+        for seg in committed where Self.isLatin(seg) && seg.surface.allSatisfy(\.isASCII) {
+            // 打鍵列の中の位置を探して、指定された区間かどうかを見る
+            var pinned = false
+            if let r = Self.find(Array(seg.reading), in: raw, from: at) {
+                pinned = pins.contains { $0 == r }
+                at = r.upperBound
+            }
+            let explicit = pinned || seg.reading.contains(where: \.isUppercase)
+            mixed.lexicon.learn(seg.surface, weight: explicit ? 2 : 1)
+        }
+    }
+
+    private static func find(_ needle: [Character], in hay: [Character], from: Int) -> Range<Int>? {
+        guard !needle.isEmpty, hay.count >= needle.count, from <= hay.count - needle.count else { return nil }
+        for i in from...(hay.count - needle.count) where Array(hay[i..<(i + needle.count)]) == needle { return i..<(i + needle.count) }
+        return nil
+    }
+
+    /// 学習に渡す読み。英字まじりのときは、言い回しとしては覚えない (読みがかなにならないため)。
+    private func commitReading(_ committed: [Segment]) -> String? {
+        committed.contains(where: Self.isLatin) ? nil : composer.kana
+    }
+
+    /// 切り分けた区間を文節に直す。
+    private func segments(for plan: MixedPlan) -> [Segment] {
+        let unk = converter.dictionary.unknownId
+        var out: [Segment] = []
+        for piece in plan.pieces {
+            if piece.isEnglish {
+                out.append(Segment(reading: piece.raw, surface: piece.text, lid: unk, rid: unk, cost: 3000))
+            } else {
+                out += converter.convert(piece.text).first?.segments ?? []
+            }
+        }
+        return out
     }
 
     private func handleSelecting(_ key: Key) -> Bool {
@@ -274,6 +369,14 @@ public final class Session {
             bumpGeneration()
             return
         }
+        mixedPlan = directInput ? nil : mixed?.plan(raw: composer.raw, pins: pins)
+        if let plan = mixedPlan {
+            // 英字まじり: 区間ごとに変換する。先読みは出さない
+            live = segments(for: plan)
+            ghost = nil
+            scheduleNeural(reading: "", plan: plan)
+            return
+        }
         let reading = composer.kana
         live = reading.isEmpty ? [] : (converter.convert(reading).first?.segments ?? [])
         if ghostSuppressed || !predictionEnabled || directInput {
@@ -296,7 +399,18 @@ public final class Session {
 
     /// 変換・確定の前に、打ちかけのローマ字を確定させて読みを固める。
     private func finalizeLive() {
-        guard !composer.pending.isEmpty else { return }
+        if !directInput, let mixed, let plan = mixed.plan(raw: composer.raw, pins: pins, final: true) {
+            let changed = plan != mixedPlan
+            mixedPlan = plan
+            if changed {
+                live = segments(for: plan)
+                scheduleNeural(reading: "", plan: plan)
+            }
+            return
+        }
+        let wasMixed = mixedPlan != nil
+        mixedPlan = nil
+        guard !composer.pending.isEmpty || wasMixed else { return }
         composer.flush()
         let reading = composer.kana
         live = converter.convert(reading).first?.segments ?? []
@@ -316,16 +430,41 @@ public final class Session {
     }
 
     /// LLM に変換の見直しと続きの予測を頼む。
-    private func scheduleNeural(reading: String, predict: Bool = true) {
+    private func scheduleNeural(reading: String, predict: Bool = true, plan: MixedPlan? = nil) {
         let gen = bumpGeneration()
-        guard let neural, !reading.isEmpty else { return }
+        guard let neural, !reading.isEmpty || plan != nil else { return }
         let context = leftContext
         let habit = habitHint()
-        let wantsPrediction = predict && predictionEnabled && !directInput && ghost == nil && !ghostSuppressed && composer.pending.isEmpty
+        let wantsPrediction = plan == nil && predict && predictionEnabled && !directInput && ghost == nil && !ghostSuppressed && composer.pending.isEmpty
+        let unk = converter.dictionary.unknownId
         let converter = self.converter
         let cancelled = { [weak self] in !(self?.isCurrent(gen) ?? false) }
 
         let refine: () -> [Segment]? = {
+            if let plan {
+                // 英字まじり: かなの区間ごとに、手前の文章 (英単語を含む) を文脈にして見直す
+                var out: [Segment] = []
+                var left = context
+                var improved = false
+                for piece in plan.pieces {
+                    if cancelled() { return nil }
+                    var segs: [Segment]
+                    if piece.isEnglish {
+                        segs = [Segment(reading: piece.raw, surface: piece.text, lid: unk, rid: unk, cost: 3000)]
+                    } else {
+                        segs = converter.convert(piece.text).first?.segments ?? []
+                        if piece.text.count >= 2,
+                           let o = neural.convert(reading: piece.text, leftContext: left, isCancelled: cancelled),
+                           let conv = converter.match(reading: piece.text, surface: o) {
+                            segs = conv.segments
+                            improved = true
+                        }
+                    }
+                    out += segs
+                    left = Spacing.spaced(left + segs.map(\.surface).joined())
+                }
+                return improved ? out : nil
+            }
             guard reading.count >= 2, !cancelled(),
                   let out = neural.convert(reading: reading, leftContext: context, isCancelled: cancelled),
                   let conv = converter.match(reading: reading, surface: out) else { return nil }
@@ -402,6 +541,25 @@ public final class Session {
     private func loadCandidates() {
         guard focus < segments.count else { return }
         let current = segments[focus]
+        if Self.isLatin(current) {
+            // 英単語: 表記の違いと、かなとして変換したもの
+            let raw = current.reading
+            var list = [current]
+            let unk = converter.dictionary.unknownId
+            var forms = [mixed?.form(raw.lowercased()) ?? raw, raw, raw.lowercased(), raw.prefix(1).uppercased() + raw.dropFirst().lowercased(), raw.uppercased()]
+            var kana = Composer()
+            for c in raw.lowercased() { kana.input(c) }
+            kana.flush()
+            if !kana.kana.contains(where: \.isASCII) {
+                forms += converter.convert(kana.kana).prefix(1).map(\.text) + [kana.kana, kana.kana.katakana]
+            }
+            for f in forms where !list.contains(where: { $0.surface == f }) {
+                list.append(Segment(reading: raw, surface: f, lid: unk, rid: unk, cost: 3000))
+            }
+            candidates = list
+            candidateIndex = 0
+            return
+        }
         var list = converter.segmentCandidates(current.reading)
         if let i = list.firstIndex(where: { $0.surface == current.surface }) {
             list.remove(at: i)
@@ -426,6 +584,8 @@ public final class Session {
 
     /// 選択中の文節を伸び縮みさせ、右側を変換し直す。
     private func resizeFocused(_ delta: Int) {
+        // 英単語を含む並びは、伸び縮みさせない (読みがかなでないため)
+        guard !segments[focus...].contains(where: Self.isLatin) else { return }
         let reading = Array(segments[focus...].map(\.reading).joined())
         let newLength = segments[focus].reading.count + delta
         guard newLength >= 1, newLength <= reading.count else { return }
@@ -461,12 +621,19 @@ public final class Session {
     private func commitSelection() {
         undoHastyChoices(segments)
         let now = userModel.now()
+        learnLatin(segments)
         for (i, seg) in segments.enumerated() where explicit[i] {
+            if Self.isLatin(seg) {
+                // 英字にされたのをかなに直した: その語は英字にしにくくする
+                if !seg.surface.allSatisfy(\.isASCII) { mixed?.lexicon.reject(seg.reading.lowercased()) }
+                continue
+            }
             let top = converter.segmentCandidates(seg.reading, limit: 12).map(\.cost).min() ?? seg.cost
             userModel.learnChoice(reading: seg.reading, surface: seg.surface, lid: seg.lid, rid: seg.rid, cost: seg.cost, topCost: top)
             recentChoices.append((seg.reading, seg.surface, now))
         }
-        commit(text: segments.map(\.surface).joined(), reading: segments.map(\.reading).joined())
+        let latin = segments.contains(where: Self.isLatin)
+        commit(text: segments.map(\.surface).joined(), reading: latin ? nil : segments.map(\.reading).joined())
     }
 
     /// 選んで覚えた変換を、この秒数のうちに同じ読みで別の表記に直したら、選び間違いとして忘れる。
@@ -490,9 +657,13 @@ public final class Session {
 
     // MARK: 確定
 
-    private func commit(text: String, reading: String) {
+    /// - Parameter reading: nil なら、言い回しや書き癖としては覚えない (英字まじりの確定)。
+    private func commit(text: String, reading: String?) {
         let gen = bumpGeneration()
         composer.clear()
+        mixedPlan = nil
+        pins = []
+        pinCycle = nil
         mode = .idle
         live = []
         segments = []
@@ -503,11 +674,15 @@ public final class Session {
         onCommit?(text)
         let now = userModel.now()
         let previous = lastCommit.flatMap { now - $0.time < 30 ? $0.text : nil }
-        userModel.recordCommit(reading: reading, surface: text, previous: previous)
-        userModel.recordReading(reading, continues: previous != nil)
+        if let reading {
+            userModel.recordCommit(reading: reading, surface: text, previous: previous)
+            userModel.recordReading(reading, continues: previous != nil)
+            leftReading = String((leftReading + reading).suffix(UserModel.maxHabitOrder))
+        } else {
+            leftReading = ""
+        }
         lastCommit = (text, now)
         syncContext(appending: text)
-        leftReading = String((leftReading + reading).suffix(UserModel.maxHabitOrder))
 
         // 続けて入力しそうな句を先読みする
         guard predictionEnabled else { return }
@@ -578,7 +753,8 @@ public final class Session {
         case .idle: break
         case .composing:
             finalizeLive()
-            commit(text: live.map(\.surface).joined(), reading: composer.kana)
+            learnLatin(live)
+            commit(text: live.map(\.surface).joined(), reading: commitReading(live))
         case .selecting:
             commitSelection()
         }

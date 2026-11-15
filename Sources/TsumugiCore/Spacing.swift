@@ -21,8 +21,10 @@ public enum Spacing {
     /// - Parameters:
     ///   - before: 入力先の、カーソルより前の文章の末尾 (2 文字あれば足りる)。
     ///   - next: これから入れる文章。
-    public static func needsSpace(after before: String, before next: String) -> Bool {
+    ///   - betweenWords: 英単語を 1 語ずつ確定しているとき。英字のあとに英字が続くなら、別の語として空ける。
+    public static func needsSpace(after before: String, before next: String, betweenWords: Bool = false) -> Bool {
         guard let p = before.last, let n = next.first else { return false }
+        if betweenWords, isLatin(p), isLatin(n) { return true }
         if isLatin(p) && isJapanese(n) {
             // 英字 1 文字だけなら空けない
             return before.dropLast().last.map(isLatin) ?? false

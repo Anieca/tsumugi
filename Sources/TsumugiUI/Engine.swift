@@ -9,6 +9,9 @@ public final class Engine {
 
     public let userModel: UserModel
     public let converter: Converter?
+    /// 自分が書いたことのある英単語 (日本語モードのまま打った英単語を見分けるのに使う)。
+    public let latinLexicon: LatinLexicon
+    private var segmenter: MixedSegmenter?
     private let neural = NeuralProxy()
     private let defaults = UserDefaults.standard
 
@@ -20,6 +23,7 @@ public final class Engine {
         case let path?: userModel = UserModel(fileURL: URL(fileURLWithPath: path))
         case nil: userModel = UserModel(fileURL: UserModel.defaultURL())
         }
+        latinLexicon = LatinLexicon(fileURL: env["TSUMUGI_USER_MODEL"] == nil ? LatinLexicon.defaultURL() : nil)
         let dictURL = Self.locate(resource: "system", ext: "dict", env: env["TSUMUGI_DICT"], dev: "build/system.dict")
         if let dictURL, let dict = try? SystemDictionary(url: dictURL) {
             converter = Converter(dictionary: dict, userModel: userModel)
@@ -27,6 +31,9 @@ public final class Engine {
             converter = nil
             NSLog("Tsumugi: 辞書が見つかりません")
         }
+        segmenter = converter.map { MixedSegmenter(converter: $0, lexicon: latinLexicon) }
+        // 単語表は最初に使うときに読み込まれる。打鍵を待たせないよう、先に読んでおく
+        DispatchQueue.global(qos: .utility).async { _ = LatinLexicon.systemWords }
         userModel.isPaused = defaults.bool(forKey: "learningPaused")
         // モデルの読み込みは裏で行い、終わるまでは辞書だけで変換する
         if let modelURL = Self.locate(resource: "zenz", ext: "gguf", env: env["TSUMUGI_MODEL"], dev: "vendor/models/zenz-v3.2-small-Q5_K_M.gguf") {
@@ -48,6 +55,7 @@ public final class Engine {
         guard let converter else { return nil }
         let s = Session(converter: converter, userModel: userModel, neural: neural)
         s.predictionEnabled = predictionEnabled
+        s.mixed = mixedInputEnabled ? segmenter : nil
         return s
     }
 
@@ -81,6 +89,15 @@ public final class Engine {
         get { defaults.object(forKey: "autoSpacingEnabled") as? Bool ?? true }
         set { defaults.set(newValue, forKey: "autoSpacingEnabled") }
     }
+
+    /// 日本語モードのまま打った英単語を見分けるか。
+    public var mixedInputEnabled: Bool {
+        get { defaults.object(forKey: "mixedInputEnabled") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "mixedInputEnabled") }
+    }
+
+    /// セッションに渡す切り分け役 (設定で切っていれば nil)。
+    public var mixedSegmenter: MixedSegmenter? { mixedInputEnabled ? segmenter : nil }
 
     // MARK: 見送った直し
 

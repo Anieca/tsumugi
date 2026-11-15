@@ -73,6 +73,31 @@ case "proofread":
     } else {
         try ProofreadEval.run(path: args[1], model: model, converter: converter)
     }
+case "learn-words":
+    // 例: tsumugi-cli learn-words <文章のファイル>...   自分が書いた文章から英単語の語彙を読み込む
+    //     日本語を含む行に出てくる英単語だけを数え、単語と回数だけを保存する (文章は保存しない)
+    let lexicon = LatinLexicon(fileURL: LatinLexicon.defaultURL())
+    let before = lexicon.count
+    for path in args.dropFirst() {
+        for line in try String(contentsOfFile: path, encoding: .utf8).split(separator: "\n") {
+            for chunk in MixedEval.chunks(String(line)) where chunk.contains(where: { MixedEval.isJa($0.first!) }) {
+                for w in chunk where MixedEval.isLetter(w.first!) { lexicon.learn(w) }
+            }
+        }
+    }
+    lexicon.save()
+    print("語彙 \(before) → \(lexicon.count) 語  (\(LatinLexicon.defaultURL().path))")
+case "plan":
+    // 例: tsumugi-cli plan <打鍵列>...   英字とかなの切り分けを見る (語彙は保存済みのものを使う)
+    let seg = MixedSegmenter(converter: converter, lexicon: LatinLexicon(fileURL: LatinLexicon.defaultURL()))
+    for raw in args.dropFirst() {
+        let p = seg.plan(raw: raw, final: true)
+        print(raw, "→", p.map { $0.pieces.map { ($0.isEnglish ? "[" + $0.text + "]" : $0.text) }.joined(separator: " ") } ?? "(英字なし)")
+    }
+case "mixed":
+    // 試作の計測: tsumugi-cli mixed [-v] <評価する文> <語彙を学ぶ文>...
+    let rest = args.dropFirst().filter { $0 != "-v" }
+    try MixedEval.run(train: Array(rest.dropFirst()), test: rest[0], converter: converter, verbose: args.contains("-v"))
 case "predict":
     guard let model = ZenzModel(path: modelPath) else { fatalError("model load failed") }
     let prefix = args.count > 1 ? args[1] : ""
@@ -89,7 +114,13 @@ case "type":
     let user = UserModel(fileURL: nil)
     let session = Session(converter: Converter(dictionary: dict, userModel: user), userModel: user, neural: model)
     session.runsNeuralInline = true
-    session.onCommit = { print("  ⏎ commit: \($0)") }
+    // TSUMUGI_WORDS=notion,Tab のように渡すと、その語を知っているものとして英字まじりの入力を試す
+    if let words = ProcessInfo.processInfo.environment["TSUMUGI_WORDS"] {
+        let lexicon = LatinLexicon(fileURL: nil)
+        for w in words.split(separator: ",") { lexicon.learn(String(w), weight: 2) }
+        session.mixed = MixedSegmenter(converter: converter, lexicon: lexicon)
+    }
+    session.onCommit = { print("  ⏎ commit: \(Spacing.spaced($0))") }
     func show() {
         let v = session.view
         var line = "  [" + v.segments.enumerated().map { $0.offset == v.focus ? "【\($0.element)】" : $0.element }.joined(separator: "|") + "]"

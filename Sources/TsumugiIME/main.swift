@@ -69,7 +69,7 @@ final class TsumugiInputController: IMKInputController {
             var text = committed
             if Engine.shared.autoSpacingEnabled, let self {
                 text = Spacing.spaced(text)
-                if Spacing.needsSpace(after: self.tailBeforeInsertion(), before: text) {
+                if Spacing.needsSpace(after: self.tailBeforeInsertion(), before: text, betweenWords: true) {
                     text = " " + text
                     ContextProbe.trace("空白を補った\t確定の前")
                 }
@@ -201,6 +201,7 @@ final class TsumugiInputController: IMKInputController {
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
         session?.predictionEnabled = Engine.shared.predictionEnabled
+        session?.mixed = Engine.shared.mixedSegmenter
     }
 
     override func deactivateServer(_ sender: Any!) {
@@ -377,6 +378,7 @@ final class TsumugiInputController: IMKInputController {
     private lazy var statsItem = NSMenuItem(title: "", action: #selector(showStats(_:)), keyEquivalent: "")
     private lazy var predictItem = NSMenuItem(title: "続きを先読みする", action: #selector(togglePrediction(_:)), keyEquivalent: "")
     private lazy var proofreadItem = NSMenuItem(title: "変換の取り違えを指摘する", action: #selector(toggleProofread(_:)), keyEquivalent: "")
+    private lazy var mixedItem = NSMenuItem(title: "英単語を切り替えなしで打つ", action: #selector(toggleMixed(_:)), keyEquivalent: "")
     private lazy var spacingItem = NSMenuItem(title: "英字と日本語のあいだを空ける", action: #selector(toggleSpacing(_:)), keyEquivalent: "")
     private lazy var pauseItem = NSMenuItem(title: "学習を一時停止", action: #selector(toggleLearning(_:)), keyEquivalent: "")
     private lazy var inputMenu: NSMenu = {
@@ -385,6 +387,7 @@ final class TsumugiInputController: IMKInputController {
         menu.addItem(predictItem)
         menu.addItem(proofreadItem)
         menu.addItem(spacingItem)
+        menu.addItem(mixedItem)
         menu.addItem(pauseItem)
         menu.addItem(NSMenuItem(title: "学習した内容をすべて消去…", action: #selector(forgetAll(_:)), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Tsumugi について…", action: #selector(showAbout(_:)), keyEquivalent: ""))
@@ -398,6 +401,7 @@ final class TsumugiInputController: IMKInputController {
         predictItem.state = engine.predictionEnabled ? .on : .off
         proofreadItem.state = engine.proofreadEnabled ? .on : .off
         spacingItem.state = engine.autoSpacingEnabled ? .on : .off
+        mixedItem.state = engine.mixedInputEnabled ? .on : .off
         pauseItem.state = engine.learningPaused ? .on : .off
         return inputMenu
     }
@@ -431,6 +435,7 @@ final class TsumugiInputController: IMKInputController {
     @objc func togglePrediction(_ sender: Any?) {
         Engine.shared.predictionEnabled.toggle()
         session?.predictionEnabled = Engine.shared.predictionEnabled
+        session?.mixed = Engine.shared.mixedSegmenter
     }
 
     @objc func toggleProofread(_ sender: Any?) {
@@ -438,6 +443,11 @@ final class TsumugiInputController: IMKInputController {
         proofTicket.advance()
         correction = nil
         assistPanel.hide()
+    }
+
+    @objc func toggleMixed(_ sender: Any?) {
+        Engine.shared.mixedInputEnabled.toggle()
+        session?.mixed = Engine.shared.mixedSegmenter
     }
 
     @objc func toggleSpacing(_ sender: Any?) {
@@ -451,13 +461,14 @@ final class TsumugiInputController: IMKInputController {
     @objc func forgetAll(_ sender: Any?) {
         let alert = NSAlert()
         alert.messageText = "学習した内容をすべて消去しますか？"
-        alert.informativeText = "覚えた変換と言い回しの履歴がこの Mac から削除されます。取り消せません。"
+        alert.informativeText = "覚えた変換と言い回し、英単語の語彙がこの Mac から削除されます。取り消せません。"
         alert.addButton(withTitle: "消去")
         alert.addButton(withTitle: "キャンセル")
         alert.alertStyle = .warning
         NSApp.activate(ignoringOtherApps: true)
         if alert.runModal() == .alertFirstButtonReturn {
             Engine.shared.userModel.forgetAll()
+            Engine.shared.latinLexicon.forgetAll()
         }
     }
 }
