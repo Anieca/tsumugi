@@ -88,6 +88,13 @@ make playground
 TSUMUGI_EVAL_LEARN=1 .build/release/tsumugi-cli eval Tools/eval/corpus-habit.tsv  # 学習つきで測る
 ```
 
+## アプリアイコン
+
+藍色の地に、絹糸で描いた「つ」を合わせ、「ことばを紡ぐ」を表したアイコンです。
+元画像は `Resources/AppIcon.png`。`make app` で各サイズの画像から `AppIcon.icns` を生成し、アプリに同梱します。
+アイコンだけを再生成する場合は `sh scripts/build-app-icon.sh` を実行してください (macOS 標準の `sips` と `iconutil` を使用)。
+メニューバーの入力モード表示には、従来どおり「紡」「A」のテンプレートアイコンを使います。
+
 ## 構成
 
 | 場所 | 中身 |
