@@ -76,20 +76,22 @@ public final class Proofreader {
     /// カーソルより前の文章のうち、最後の文を読み直す。
     /// - Parameter ignoring: 提案しない直しの鍵 (`Correction.key`)。
     /// - Returns: いちばん確からしい直し。なければ nil。
-    public func check(_ text: String, ignoring: Set<String> = [], isCancelled: () -> Bool = { false }) -> Correction? {
-        candidates(text, isCancelled: isCancelled)
+    public func check(_ text: String, startsMidway: Bool = false, ignoring: Set<String> = [],
+                      isCancelled: () -> Bool = { false }) -> Correction? {
+        candidates(text, startsMidway: startsMidway, isCancelled: isCancelled)
             .filter { $0.gain >= minimumGain && $0.textGain >= minimumTextGain && !ignoring.contains($0.key) }
             .max { $0.gain < $1.gain }
     }
 
     /// 最後の文の、変換し直すと変わる箇所すべて (しきい値で絞る前)。計測用にも使う。
-    public func candidates(_ text: String, isCancelled: () -> Bool = { false }) -> [Correction] {
+    /// - Parameter startsMidway: 文章が入力欄の途中から始まっている (先頭の語が切れているかもしれない)。
+    public func candidates(_ text: String, startsMidway: Bool = false, isCancelled: () -> Bool = { false }) -> [Correction] {
         let chars = Array(text)
         var end = chars.count
         while end > 0, Self.terminators.contains(chars[end - 1]) || chars[end - 1].isWhitespace { end -= 1 }
         var start = end
         while start > 0, !Self.terminators.contains(chars[start - 1]), end - start < Self.maxSentence { start -= 1 }
-        let cutMidway = start > 0 && !Self.terminators.contains(chars[start - 1]) || start == 0 && chars.count >= Self.contextLimit
+        let cutMidway = start > 0 && !Self.terminators.contains(chars[start - 1]) || start == 0 && (startsMidway || chars.count >= Self.contextLimit)
 
         var all: [Correction] = []
         var i = start

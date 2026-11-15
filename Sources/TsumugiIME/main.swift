@@ -76,17 +76,28 @@ final class TsumugiInputController: IMKInputController {
 
     /// カーソルより前の文章 (最大 300 字)。先読みと変換の文脈にだけ使い、保存はしない。
     /// 位置や文章を教えてくれないアプリでは nil。
-    private func textBeforeCursor() -> String? {
+    private func textBeforeCursor() -> String? { contextBeforeCursor()?.text }
+
+    /// カーソルより前の文章と、それが入力欄の先頭から全部かどうか。
+    /// Chromium 系 (Notion・Claude など) はカーソルの手前 100 字ぶんしか即答できず、それより広い範囲を
+    /// 尋ねると何も返さない。読めなければ、範囲を狭めて尋ね直す。
+    private func contextBeforeCursor() -> (text: String, whole: Bool)? {
         guard let client = textClient else { return nil }
         let sel = client.selectedRange()
-        var text: String?
+        var found: (text: String, whole: Bool)?
         // 文章を読めないアプリは位置 0 を返すことがあるので、0 は「わからない」として扱う
         if sel.location != NSNotFound, sel.location > 0 {
-            let n = min(sel.location, 300)
-            text = client.attributedSubstring(from: NSRange(location: sel.location - n, length: n))?.string
+            for limit in [300, 100, 60, 30] {
+                let n = min(sel.location, limit)
+                if let t = client.attributedSubstring(from: NSRange(location: sel.location - n, length: n))?.string, !t.isEmpty {
+                    found = (t, n == sel.location)
+                    break
+                }
+                if n == sel.location, limit <= 100 { break }
+            }
         }
-        ContextProbe.record(app: client.bundleIdentifier(), location: sel.location, read: text?.count)
-        return text
+        ContextProbe.record(app: client.bundleIdentifier(), location: sel.location, read: found?.text.count)
+        return found
     }
 
     private var textClient: IMKTextInput? { client() }
@@ -212,10 +223,10 @@ final class TsumugiInputController: IMKInputController {
         let ticket = proofTicket.advance()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             guard let self, self.proofTicket.value == ticket, self.session?.isComposing == false,
-                  let text = self.textBeforeCursor() else { return }
+                  let (text, whole) = self.contextBeforeCursor() else { return }
             let ignoring = engine.ignoredCorrections
             Self.proofQueue.async { [weak self] in
-                let found = proofreader.check(text, ignoring: ignoring) { self?.proofTicket.value != ticket }
+                let found = proofreader.check(text, startsMidway: !whole, ignoring: ignoring) { self?.proofTicket.value != ticket }
                 DispatchQueue.main.async {
                     // 確定直後の先読みが出ているときは、そちらを優先して出さない
                     guard let self, let found, self.proofTicket.value == ticket, self.session?.isComposing == false,
@@ -281,8 +292,9 @@ final class TsumugiInputController: IMKInputController {
             let now = client.selectedRange()
             let n = (c.fixedTail as NSString).length
             // カーソルの位置も見る (末尾に足されただけでも、末尾の文字列は一致してしまうため)
-            let ok = now.location == sel.location - length + n
-                && client.attributedSubstring(from: NSRange(location: now.location - n, length: n))?.string == c.fixedTail
+            // (読める範囲の狭いアプリでは文章を読み直せないことがある。そのときは位置だけで判断する)
+            let after = now.location >= n ? client.attributedSubstring(from: NSRange(location: now.location - n, length: n))?.string : nil
+            let ok = now.location == sel.location - length + n && (after == nil || after == c.fixedTail)
             if ok {
                 self.scheduleProofread()   // 同じ文にまだあれば続けて出す
             } else {
