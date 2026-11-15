@@ -56,7 +56,7 @@ final class TsumugiInputController: IMKInputController {
     private var hadMarkedText = false
     private var directInput = false
 
-    /// いま見せている直しの提案。次の打鍵で消える (Shift+Tab なら適用する)。
+    /// いま見せている直しの提案。次の打鍵で消える (Tab なら適用する)。
     private var correction: Correction?
     /// 読み直しの世代。打鍵のたびに進め、古い読み直しを打ち切る。
     private let proofTicket = Ticket()
@@ -107,7 +107,9 @@ final class TsumugiInputController: IMKInputController {
         if let c = correction {
             correction = nil
             let mods = event.modifierFlags.intersection([.command, .control, .option, .shift])
-            if event.keyCode == 48, mods == .shift, !session.isComposing, apply(c) { return true }
+            // Tab (設定によっては Shift+Tab のみ) で反映する。提案が出ている間だけ受け取り、それ以外はアプリへ渡す
+            let accepts = mods == .shift || mods.isEmpty && Engine.shared.correctionUsesPlainTab
+            if event.keyCode == 48, accepts, !session.isComposing, apply(c) { return true }
             assistPanel.hide()
         }
         // 英字モードで何も入力していなければ、打鍵はそのままアプリへ
@@ -223,7 +225,8 @@ final class TsumugiInputController: IMKInputController {
                     engine.noteShown(found)
                     let rect = self.caretRect(client)
                     ContextProbe.trace("直しを提案\t\(found.from.count) 字\tカーソルの位置 \(rect.map { "\(Int($0.minX)),\(Int($0.minY))" } ?? "不明")")
-                    assistPanel.show(.correction(from: found.from, to: found.to), at: rect)
+                    let keys = engine.correctionUsesPlainTab ? ["tab"] : ["shift", "tab"]
+                    assistPanel.show(.correction(from: found.from, to: found.to, keys: keys), at: rect)
                 }
             }
         }
@@ -259,7 +262,7 @@ final class TsumugiInputController: IMKInputController {
         let range = NSRange(location: sel.location - length, length: length)
         guard client.attributedSubstring(from: range)?.string == c.tail else { return false }
         // 範囲を指定した書き換えだけだと、Electron 系のアプリは「入力メソッドはこのキーを使わなかった」とみなし、
-        // Shift+Tab をアプリ側でも処理してしまう (フォーカスが前の欄へ移る)。末尾の 2 文字を、ふつうの確定と
+        // Tab をアプリ側でも処理してしまう (フォーカスが隣の欄へ移る)。末尾の 2 文字を、ふつうの確定と
         // 同じ形 (範囲の指定なし) で入れると、キーは入力メソッドが使ったものとして扱われる。
         // (未確定文字列として差し替える方法は、Electron が範囲の指定を無視するので使えない。)
         let fixed = Array(c.fixedTail)
@@ -300,12 +303,14 @@ final class TsumugiInputController: IMKInputController {
     private lazy var statsItem = NSMenuItem(title: "", action: #selector(showStats(_:)), keyEquivalent: "")
     private lazy var predictItem = NSMenuItem(title: "続きを先読みする", action: #selector(togglePrediction(_:)), keyEquivalent: "")
     private lazy var proofreadItem = NSMenuItem(title: "変換の取り違えを指摘する", action: #selector(toggleProofread(_:)), keyEquivalent: "")
+    private lazy var correctionKeyItem = NSMenuItem(title: "直しを Tab だけで反映する (切ると Shift+Tab)", action: #selector(toggleCorrectionKey(_:)), keyEquivalent: "")
     private lazy var pauseItem = NSMenuItem(title: "学習を一時停止", action: #selector(toggleLearning(_:)), keyEquivalent: "")
     private lazy var inputMenu: NSMenu = {
         let menu = NSMenu(title: "Tsumugi")
         menu.addItem(statsItem)
         menu.addItem(predictItem)
         menu.addItem(proofreadItem)
+        menu.addItem(correctionKeyItem)
         menu.addItem(pauseItem)
         menu.addItem(NSMenuItem(title: "学習した内容をすべて消去…", action: #selector(forgetAll(_:)), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Tsumugi について…", action: #selector(showAbout(_:)), keyEquivalent: ""))
@@ -318,6 +323,7 @@ final class TsumugiInputController: IMKInputController {
         statsItem.title = "覚えた変換 \(stats.words) 件・言い回し \(stats.phrases) 件"
         predictItem.state = engine.predictionEnabled ? .on : .off
         proofreadItem.state = engine.proofreadEnabled ? .on : .off
+        correctionKeyItem.state = engine.correctionUsesPlainTab ? .on : .off
         pauseItem.state = engine.learningPaused ? .on : .off
         return inputMenu
     }
@@ -358,6 +364,10 @@ final class TsumugiInputController: IMKInputController {
         proofTicket.advance()
         correction = nil
         assistPanel.hide()
+    }
+
+    @objc func toggleCorrectionKey(_ sender: Any?) {
+        Engine.shared.correctionUsesPlainTab.toggle()
     }
 
     @objc func toggleLearning(_ sender: Any?) {

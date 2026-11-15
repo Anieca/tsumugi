@@ -2,6 +2,11 @@
 
 版は [Semantic Versioning](https://semver.org/lang/ja/) に従います。1.0 までは操作感や学習データの形式が変わることがあります。
 
+## [0.2.2] - 2026-11-15
+
+- 直しの提案を Tab で反映できるようにした (Shift+Tab は押しにくいため)。提案が出ていないときの Tab は、これまでどおりアプリへ渡す
+- 入力メニューの「直しを Tab だけで反映する」を切ると、これまでどおり Shift+Tab でだけ反映する (Tab を字下げや欄の移動に使いたいとき)
+
 ## [0.2.1] - 2026-11-15
 
 - Electron 系のアプリ (チャット欄など) で、直しの提案が画面の外に出て見えなかったのを修正
@@ -28,6 +33,7 @@
 - `install.sh` による一括インストールと更新、入力ソースの自動有効化、`scripts/uninstall.sh`
 - llama.cpp v1.0.0 (b1b770d) を使用
 
+[0.2.2]: https://github.com/Anieca/tsumugi/releases/tag/v0.2.2
 [0.2.1]: https://github.com/Anieca/tsumugi/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Anieca/tsumugi/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Anieca/tsumugi/releases/tag/v0.1.0

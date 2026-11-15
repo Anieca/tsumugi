@@ -8,8 +8,8 @@ public enum AssistContent: Equatable {
     /// typed: いま未確定で表示されている文字列 (先読みのうち、すでに打った部分を薄く見せる)
     case ghost(Ghost, typed: String)
     case candidates([String], selected: Int)
-    /// 確定済みの文章への直しの提案。
-    case correction(from: String, to: String)
+    /// 確定済みの文章への直しの提案。keys は反映するキーの表示 (["tab"] か ["shift", "tab"])。
+    case correction(from: String, to: String, keys: [String])
 
     public init(view: SessionView) {
         if !view.candidates.isEmpty {
@@ -69,6 +69,7 @@ struct GhostPill: View {
 struct CorrectionPill: View {
     let from: String
     let to: String
+    let keys: [String]
 
     var body: some View {
         HStack(spacing: 7) {
@@ -86,8 +87,7 @@ struct CorrectionPill: View {
             Text(to)
                 .font(.system(size: 14))
                 .lineLimit(1)
-            Keycap(label: "shift")
-            Keycap(label: "tab")
+            ForEach(keys, id: \.self) { Keycap(label: $0) }
         }
         .padding(.leading, 9)
         .padding(.trailing, 7)
@@ -154,8 +154,8 @@ struct AssistRoot: View {
             GhostPill(ghost: g, typed: typed)
         case .candidates(let items, let selected):
             CandidateList(items: items, selected: selected)
-        case .correction(let from, let to):
-            CorrectionPill(from: from, to: to)
+        case .correction(let from, let to, let keys):
+            CorrectionPill(from: from, to: to, keys: keys)
         }
     }
 }
