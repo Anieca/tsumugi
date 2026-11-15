@@ -41,6 +41,18 @@ final class TsumugiInputController: IMKInputController {
             self?.hadMarkedText = false
         }
         session?.onAsyncUpdate = { [weak self] in self?.render() }
+        session?.contextProvider = { [weak self] in self?.textBeforeCursor() }
+    }
+
+    /// カーソルより前の文章 (最大 300 字)。先読みと変換の文脈にだけ使い、保存はしない。
+    /// 位置や文章を教えてくれないアプリでは nil。
+    private func textBeforeCursor() -> String? {
+        guard let client = textClient else { return nil }
+        let sel = client.selectedRange()
+        // 文章を読めないアプリは位置 0 を返すことがあるので、0 は「わからない」として扱う
+        guard sel.location != NSNotFound, sel.location > 0 else { return nil }
+        let n = min(sel.location, 300)
+        return client.attributedSubstring(from: NSRange(location: sel.location - n, length: n))?.string
     }
 
     private var textClient: IMKTextInput? { client() }

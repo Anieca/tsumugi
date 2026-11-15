@@ -26,6 +26,8 @@ public final class UserModel {
         var words: [String: [LearnedWord]] = [:]
         var phrases: [String: PhraseRecord] = [:]
         var nexts: [String: [String: PhraseRecord]] = [:]
+        /// 確定した読みを、続けて打ったまとまりごとに並べたもの。書き癖 (読みの並び) を引くのに使う。
+        var log: [String]?
     }
 
     private let lock = NSLock()
@@ -38,6 +40,16 @@ public final class UserModel {
     /// true の間は何も学習しない。
     public var isPaused = false
 
+    /// 書き癖を引くときに見る、直前の読みの最大文字数。
+    public static let maxHabitOrder = 8
+    private static let minHabitOrder = 3
+    private static let maxHabitKana = 30000
+    /// log を区切り文字でつないだもの。
+    private var habitChars: [Character] = []
+    /// 読み 3 文字 → その直後の文字の位置 (habitChars 内)。
+    private var habitIndex: [String: [Int32]] = [:]
+    private static let streamBreak: Character = "\n"
+
     public static let maxPhraseReadingLength = 40
     public static let maxLearnedLength = 24
     private static let maxPhrases = 4000
@@ -49,6 +61,7 @@ public final class UserModel {
            let s = try? JSONDecoder().decode(Snapshot.self, from: data) {
             snap = s
         }
+        rebuildHabit()
     }
 
     public static func defaultURL() -> URL {
@@ -144,6 +157,78 @@ public final class UserModel {
         }
     }
 
+    // MARK: 書き癖 (読みの並び)
+
+    /// 確定した読みを書き癖の記録に足す。
+    /// - Parameter continues: 直前の確定に続けて打ったものか。
+    public func recordReading(_ reading: String, continues: Bool) {
+        guard !isPaused, !reading.isEmpty, !reading.contains(Self.streamBreak) else { return }
+        lock.lock(); defer { lock.unlock() }
+        var log = snap.log ?? []
+        if continues, !log.isEmpty {
+            log[log.count - 1] += reading
+        } else {
+            log.append(reading)
+            appendHabit(Self.streamBreak)
+        }
+        snap.log = log
+        reading.forEach(appendHabit)
+        if habitChars.count > Self.maxHabitKana * 11 / 10 {
+            var total = habitChars.count
+            while total > Self.maxHabitKana, log.count > 1 { total -= log.removeFirst().count + 1 }
+            snap.log = log
+            rebuildHabit()
+        }
+        scheduleSave()
+    }
+
+    private func appendHabit(_ c: Character) {
+        let i = habitChars.count
+        habitChars.append(c)
+        let n = Self.minHabitOrder
+        guard c != Self.streamBreak, i >= n, !habitChars[(i - n)..<i].contains(Self.streamBreak) else { return }
+        habitIndex[String(habitChars[(i - n)..<i]), default: []].append(Int32(i))
+    }
+
+    private func rebuildHabit() {
+        habitChars = []
+        habitIndex = [:]
+        for stream in snap.log ?? [] {
+            appendHabit(Self.streamBreak)
+            stream.forEach(appendHabit)
+        }
+    }
+
+    /// この読みの並びのあとに、過去の自分が次に打ったかな。
+    /// 直前の読みが長く一致する箇所ほど信用し、同じ並びを何度も打っているほど重みを大きくする。
+    public func habit(after reading: String) -> Habit? {
+        let ctx = Array(reading.suffix(Self.maxHabitOrder))
+        let n = Self.minHabitOrder
+        guard ctx.count >= n else { return nil }
+        lock.lock(); defer { lock.unlock() }
+        guard let positions = habitIndex[String(ctx.suffix(n))] else { return nil }
+        // 各出現箇所について、直前が何文字一致しているかを数える
+        var found: [(length: Int, next: Character)] = []
+        for p in positions {
+            let pos = Int(p)
+            var len = n
+            while len < ctx.count, pos - 1 - len >= 0, habitChars[pos - 1 - len] == ctx[ctx.count - 1 - len] { len += 1 }
+            found.append((len, habitChars[pos]))
+        }
+        // いちばん長く一致する並びから順に、十分な回数があるものを採る (長い一致なら 1 回でも手がかりにする)
+        for length in stride(from: ctx.count, through: n, by: -1) {
+            let hits = found.filter { $0.length >= length }
+            guard hits.count >= (length >= 6 ? 1 : 2) else { continue }
+            var next: [Character: Float] = [:]
+            for h in hits { next[h.next, default: 0] += 1 / Float(hits.count) }
+            // 重みは控えめにしてある。これより強くすると、癖のない文章で外れた先読みが増えた (Tools/eval)
+            let evidence = Float(hits.count) / Float(hits.count + 2)
+            let reach: Float = length >= 5 ? 1 : (length == 4 ? 0.7 : 0.5)
+            return Habit(next: next, weight: min(0.85, evidence * reach))
+        }
+        return nil
+    }
+
     /// 打ちかけの読みから、過去に確定した句を補完する。
     public func completePhrase(readingPrefix: String) -> PhraseRecord? {
         let n = readingPrefix.count
@@ -185,6 +270,7 @@ public final class UserModel {
     public func forgetAll() {
         lock.lock()
         snap = Snapshot()
+        rebuildHabit()
         lock.unlock()
         saveNow()
     }

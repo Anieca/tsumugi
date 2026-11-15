@@ -230,3 +230,66 @@ extension Character {
         return (0x3041...0x309F).contains(v) || (0x30A0...0x30FF).contains(v)
     }
 }
+
+public enum Romaji {
+    private static let inverse: [String: String] = {
+        var inv: [String: String] = [:]
+        // 同じかなに複数の打ち方があるときは、短く、ふつうの行 (c・l・x・q 以外) の打ち方を選ぶ
+        func rank(_ k: String) -> (Int, Int, String) { (k.count, "clxq".contains(k.first!) ? 1 : 0, k) }
+        for (key, kana) in RomajiTable.table where key != "n'" && key != "xn" {
+            if let cur = inv[kana], rank(cur) <= rank(key) { continue }
+            inv[kana] = key
+        }
+        return inv
+    }()
+
+    /// かなを打つためのローマ字の打鍵列 (検証・計測用)。打てない文字はそのまま返す。
+    public static func keys(for kana: String) -> String {
+        let chars = Array(kana)
+        var out = ""
+        var i = 0
+        while i < chars.count {
+            if chars[i] == "っ", i + 1 < chars.count,
+               let next = unit(chars, i + 1)?.0.first, !"aiueon".contains(next), next.isLetter {
+                out.append(next)
+                i += 1
+                continue
+            }
+            if let (keys, len) = unit(chars, i) {
+                out += keys
+                i += len
+            } else {
+                out.append(chars[i])
+                i += 1
+            }
+        }
+        return out
+    }
+
+    /// かな → そのかなになる打ち方すべて。
+    private static let spellings: [String: [String]] = {
+        var m: [String: [String]] = [:]
+        for (key, kana) in RomajiTable.table { m[kana, default: []].append(key) }
+        return m
+    }()
+
+    /// 打ちかけのローマ字 pending が、かな列 kana を打っている途中としてありえるか。
+    public static func isTyping(_ pending: String, toward kana: String) -> Bool {
+        guard !pending.isEmpty else { return true }
+        let chars = Array(kana)
+        guard !chars.isEmpty else { return false }
+        for len in 1...min(2, chars.count) {
+            if spellings[String(chars[..<len])]?.contains(where: { $0.hasPrefix(pending) }) == true { return true }
+        }
+        // 促音は次の子音を重ねて打つ
+        if chars[0] == "っ", pending.count == 1, !"aiueon".contains(pending), chars.count > 1 {
+            return isTyping(pending, toward: String(chars[1...]))
+        }
+        return false
+    }
+
+    private static func unit(_ chars: [Character], _ i: Int) -> (String, Int)? {
+        if i + 1 < chars.count, let k = inverse[String(chars[i...(i + 1)])] { return (k, 2) }
+        return inverse[String(chars[i])].map { ($0, 1) }
+    }
+}

@@ -162,4 +162,93 @@ final class SessionTests: XCTestCase {
         b.forgetAll()
         XCTAssertNil(UserModel(fileURL: url).completePhrase(readingPrefix: "よろし"))
     }
+
+    func testAppContextIsUsedAsLeftContext() {
+        let llm = FakeNeural()
+        session = Session(converter: Converter(dictionary: Self.dictionary!, userModel: user), userModel: user, neural: llm)
+        session.runsNeuralInline = true
+        session.onCommit = { [unowned self] in self.commits.append($0) }
+        var document = "田中様\nお世話になっております。"
+        session.contextProvider = { document }
+        type("kyou")
+        XCTAssertEqual(llm.contexts.last, document)
+        // 入力先への反映が遅れても、いま確定した文字列は文脈に入る
+        session.handle(.enter)
+        XCTAssertEqual(llm.contexts.last, document + commits[0])
+        // 文章を読めない入力先では、自分が確定した文字列をつないで文脈にする
+        document = ""
+        session.contextProvider = { nil }
+        type("ha")
+        XCTAssertEqual(llm.contexts.last, "田中様\nお世話になっております。" + commits[0])
+    }
+
+    func testGhostDisappearsWhenRomajiDiverges() {
+        let llm = FakeNeural()
+        llm.prediction = "しりょうをてんぷ"
+        session = Session(converter: Converter(dictionary: Self.dictionary!, userModel: user), userModel: user, neural: llm)
+        session.runsNeuralInline = true
+        type("siryou")
+        XCTAssertEqual(session.view.ghost?.reading, "しりょうをてんぷ")
+        type("w")   // 「を」の打ちかけ。先読みどおりなので残す
+        XCTAssertNotNil(session.view.ghost)
+        session.handle(.backspace)
+        type("n")   // 「を」にはならない打ちかけ。すぐに消す
+        XCTAssertNil(session.view.ghost)
+    }
+
+    func testHabitLearnsReadingSequences() {
+        XCTAssertNil(user.habit(after: "つむぎか"))
+        for _ in 0..<2 {
+            user.recordReading("おせわになっております。", continues: false)
+            user.recordReading("つむぎかぶしきがいしゃのいしいです。", continues: true)
+        }
+        // 確定の区切りをまたいで、読みの並びとして覚えている
+        let h = user.habit(after: "なっております。")
+        XCTAssertEqual(h?.next, ["つ": 1])
+        XCTAssertGreaterThan(h?.weight ?? 0, 0.3)
+        XCTAssertEqual(user.habit(after: "つむぎか")?.next, ["ぶ": 1])
+        // 別のまとまりの先頭とはつながない
+        XCTAssertNil(user.habit(after: "いしいです。")?.next["お"])
+        // 手がかりが短すぎるときは何も言わない
+        XCTAssertNil(user.habit(after: "つむ"))
+        // セッションは、確定した読みを書き癖として記録し、予測のときに LLM へ渡す
+        let llm = FakeNeural()
+        session = Session(converter: Converter(dictionary: Self.dictionary!, userModel: user), userModel: user, neural: llm)
+        session.runsNeuralInline = true
+        type("osewaninatteorimasu.")
+        session.handle(.enter)
+        XCTAssertEqual(llm.habits.last??("")?.next, ["つ": 1])
+        user.forgetAll()
+        XCTAssertNil(user.habit(after: "なっております。"))
+    }
+
+    func testRomajiKeys() {
+        XCTAssertEqual(Romaji.keys(for: "きょうはがっこうにいった。"), "kyouhagakkouniitta.")
+        XCTAssertEqual(Romaji.keys(for: "しんぶんをよんだ"), "sinnbunnwoyonnda")
+        XCTAssertTrue(Romaji.isTyping("sh", toward: "しょうひん"))
+        XCTAssertTrue(Romaji.isTyping("k", toward: "っか"))
+        XCTAssertTrue(Romaji.isTyping("n", toward: "んで"))
+        XCTAssertFalse(Romaji.isTyping("k", toward: "さ"))
+        XCTAssertTrue(Romaji.isTyping("", toward: ""))
+    }
+}
+
+/// 呼ばれ方を記録するだけの LLM 役。
+private final class FakeNeural: NeuralAssist {
+    var contexts: [String] = []
+    var habits: [HabitHint?] = []
+    /// 続きの予測として返す読み。
+    var prediction: String?
+
+    func convert(reading: String, leftContext: String, isCancelled: () -> Bool) -> String? {
+        contexts.append(leftContext)
+        return nil
+    }
+
+    func predict(readingPrefix: String, leftContext: String, habit: HabitHint?, isCancelled: () -> Bool) -> NeuralPrediction? {
+        contexts.append(leftContext)
+        habits.append(habit)
+        guard let p = prediction, p.hasPrefix(readingPrefix), p.count > readingPrefix.count else { return nil }
+        return NeuralPrediction(reading: p, surface: nil, confidence: 0.9)
+    }
 }

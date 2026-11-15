@@ -7,6 +7,7 @@ import TsumugiLLM
 //   tsumugi-cli llm <読み> [左文脈]      LLM で変換し、ラティスで検証
 //   tsumugi-cli predict <読みの頭> [左文脈]  続きの予測 (生の出力と確率)
 //   tsumugi-cli type <ローマ字>          セッションに打鍵を流す
+//   tsumugi-cli eval [-v] [コーパス]     先読みの省打鍵率と的中率を測る
 
 let args = Array(CommandLine.arguments.dropFirst())
 let root = FileManager.default.currentDirectoryPath
@@ -20,7 +21,7 @@ func ms(_ body: () -> Void) -> Double {
 }
 
 guard let cmd = args.first else {
-    print("usage: tsumugi-cli convert|llm|predict|type ...")
+    print("usage: tsumugi-cli convert|llm|predict|type|eval ...")
     exit(1)
 }
 let dict = try SystemDictionary(url: URL(fileURLWithPath: dictPath))
@@ -57,7 +58,7 @@ case "predict":
     var raw: [(String, Float)] = []
     let t = ms { raw = model.debugPredict(readingPrefix: prefix, leftContext: left) }
     print(raw.map { "\($0.0)(\(String(format: "%.2f", $0.1)))" }.joined(separator: " "), String(format: " [%.0fms]", t))
-    let p = model.predict(readingPrefix: prefix, leftContext: left) { false }
+    let p = model.predict(readingPrefix: prefix, leftContext: left, habit: nil) { false }
     print("predict:", p.map { "\($0.reading) → \($0.surface ?? "-")  conf=\($0.confidence)" } ?? "nil")
 case "type":
     // 例: tsumugi-cli type "kyouhaiitenkidesune" "<space>" "<enter>"
@@ -89,6 +90,38 @@ case "type":
             show()
         }
     }
+case "eval":
+    // 例: tsumugi-cli eval [-v] [コーパス]   先読みの省打鍵率と的中率
+    let rest = args.dropFirst().filter { $0 != "-v" }
+    let docs = try PredictionEval.load(rest.first ?? root + "/Tools/eval/corpus.tsv")
+    let model = ProcessInfo.processInfo.environment["TSUMUGI_NO_LLM"] == nil ? ZenzModel(path: modelPath) : nil
+    let env = ProcessInfo.processInfo.environment
+    if let v = env["TSUMUGI_TOKEN_P"].flatMap(Float.init) { model?.predictionTokenThreshold = v }
+    if let v = env["TSUMUGI_TOTAL_P"].flatMap(Float.init) { model?.predictionThreshold = v }
+    var ev = PredictionEval()
+    ev.verbose = args.contains("-v")
+    var total = PredictionEval.Tally()
+    // 学習つきの計測 (TSUMUGI_EVAL_LEARN=1): 1 人の利用者が文書を順に書いていく想定で、学習内容を持ち越す。
+    // 名前が warmup- で始まる文書は「これまでに書いた文章」として打つだけで、成績には数えない。
+    let learns = env["TSUMUGI_EVAL_LEARN"] != nil
+    let shared = UserModel(fileURL: nil)
+    for doc in docs {
+        let warmup = doc.name.hasPrefix("warmup-")
+        if warmup && !learns { continue }
+        let user = learns ? shared : UserModel(fileURL: nil)
+        user.isPaused = !learns
+        let session = Session(converter: Converter(dictionary: dict, userModel: user), userModel: user, neural: warmup ? nil : model)
+        session.runsNeuralInline = true
+        session.usesHabit = env["TSUMUGI_NO_HABIT"] == nil
+        if ev.verbose && !warmup { print(doc.name) }
+        var quiet = ev
+        if warmup { quiet.verbose = false }
+        let t = quiet.run(doc, session: session)
+        if warmup { continue }
+        total.add(t)
+        print(doc.name.padding(toLength: 16, withPad: " ", startingAt: 0), t.line)
+    }
+    print("合計".padding(toLength: 16, withPad: " ", startingAt: 0), total.line)
 default:
     print("unknown command")
 }

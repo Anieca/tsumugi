@@ -21,6 +21,7 @@ final class EditorView: NSView {
         self.session = session
         session.onCommit = { [weak self] in self?.committed += $0 }
         session.onAsyncUpdate = { [weak self] in self?.refresh() }
+        session.contextProvider = { [weak self] in self.map { String($0.committed.suffix(300)) } }
     }
 
     override func keyDown(with event: NSEvent) {

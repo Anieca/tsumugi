@@ -83,8 +83,8 @@ final class NeuralProxy: NeuralAssist {
         model?.convert(reading: reading, leftContext: leftContext, isCancelled: isCancelled)
     }
 
-    func predict(readingPrefix: String, leftContext: String, isCancelled: () -> Bool) -> NeuralPrediction? {
-        model?.predict(readingPrefix: readingPrefix, leftContext: leftContext, isCancelled: isCancelled)
+    func predict(readingPrefix: String, leftContext: String, habit: HabitHint?, isCancelled: () -> Bool) -> NeuralPrediction? {
+        model?.predict(readingPrefix: readingPrefix, leftContext: leftContext, habit: habit, isCancelled: isCancelled)
     }
 }
 

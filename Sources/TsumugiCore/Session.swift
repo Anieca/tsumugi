@@ -55,6 +55,11 @@ public final class Session {
     public var neuralDeadline: TimeInterval = 0.03
     /// 続きの先読みを出すかどうか。
     public var predictionEnabled = true
+    /// 先読みに自分の書き癖を混ぜるかどうか (計測用に切れるようにしてある)。
+    public var usesHabit = true
+    /// 入力先のカーソルより前にある文章 (取れないアプリでは nil)。
+    /// あれば自分が確定した文字列の代わりに、これを LLM の左文脈にする。端末の外には出さず、保存もしない。
+    public var contextProvider: (() -> String?)?
     /// テスト用: LLM の処理を呼び出し元スレッドで同期実行する。
     public var runsNeuralInline = false
 
@@ -71,6 +76,8 @@ public final class Session {
     private var candidateIndex = 0
 
     private var leftContext = ""
+    /// この入力先で続けて確定した読み。書き癖 (読みの並び) を引くための手がかり。
+    private var leftReading = ""
     private var lastCommit: (text: String, time: Double)?
 
     private let queue = DispatchQueue(label: "tsumugi.neural", qos: .userInitiated)
@@ -131,18 +138,20 @@ public final class Session {
             // かなにならない数字や記号は、未入力のときはそのままアプリへ渡す
             guard c.isLetter || RomajiTable.table[String(c)] != nil else {
                 dismissGhost()
-                leftContext = String((leftContext + String(c)).suffix(60))
+                leftContext = String((leftContext + String(c)).suffix(Self.contextWindow))
+                leftReading = ""
                 return false
             }
             ghost = nil
             ghostSuppressed = false
+            syncContext(appending: "")
             mode = .composing
             composer.input(c)
             refreshComposition()
             return true
         default:
             dismissGhost()
-            if key == .enter || key == .backspace { leftContext = "" ; lastCommit = nil }
+            if key == .enter || key == .backspace { leftContext = ""; leftReading = ""; lastCommit = nil }
             return false
         }
     }
@@ -254,7 +263,9 @@ public final class Session {
             } else {
                 ghost = nil
             }
-        } else if let g = ghost, !g.reading.hasPrefix(reading) {
+        } else if let g = ghost,
+                  !g.reading.hasPrefix(reading) || !Romaji.isTyping(composer.pending, toward: String(g.reading.dropFirst(reading.count))) {
+            // 打ちかけのローマ字が先読みと食い違ったら、すぐに消す
             ghost = nil
         }
         scheduleNeural(reading: reading)
@@ -286,6 +297,7 @@ public final class Session {
         let gen = bumpGeneration()
         guard let neural, !reading.isEmpty else { return }
         let context = leftContext
+        let habit = habitHint()
         let wantsPrediction = predict && predictionEnabled && ghost == nil && !ghostSuppressed && composer.pending.isEmpty
         let converter = self.converter
         let cancelled = { [weak self] in !(self?.isCurrent(gen) ?? false) }
@@ -298,7 +310,7 @@ public final class Session {
         }
         let predictGhost: () -> Ghost? = {
             guard wantsPrediction, !cancelled(),
-                  let p = neural.predict(readingPrefix: reading, leftContext: context, isCancelled: cancelled),
+                  let p = neural.predict(readingPrefix: reading, leftContext: context, habit: habit, isCancelled: cancelled),
                   p.reading.count >= reading.count + 2 else { return nil }
             var text = converter.convert(p.reading).first?.text
             if let out = neural.convert(reading: p.reading, leftContext: context, isCancelled: cancelled),
@@ -447,8 +459,10 @@ public final class Session {
         let now = userModel.now()
         let previous = lastCommit.flatMap { now - $0.time < 30 ? $0.text : nil }
         userModel.recordCommit(reading: reading, surface: text, previous: previous)
+        userModel.recordReading(reading, continues: previous != nil)
         lastCommit = (text, now)
-        leftContext = String((leftContext + text).suffix(60))
+        syncContext(appending: text)
+        leftReading = String((leftReading + reading).suffix(UserModel.maxHabitOrder))
 
         // 続けて入力しそうな句を先読みする
         guard predictionEnabled else { return }
@@ -458,10 +472,11 @@ public final class Session {
         }
         guard let neural else { return }
         let context = leftContext
+        let habit = habitHint()
         let converter = self.converter
         let cancelled = { [weak self] in !(self?.isCurrent(gen) ?? false) }
         let work: () -> Ghost? = {
-            guard let p = neural.predict(readingPrefix: "", leftContext: context, isCancelled: cancelled),
+            guard let p = neural.predict(readingPrefix: "", leftContext: context, habit: habit, isCancelled: cancelled),
                   p.reading.count >= 3, p.confidence >= 0.45 else { return nil }
             var out = converter.convert(p.reading).first?.text
             if let o = neural.convert(reading: p.reading, leftContext: context, isCancelled: cancelled),
@@ -482,6 +497,27 @@ public final class Session {
                 self.onAsyncUpdate?()
             }
         }
+    }
+
+    /// 左文脈を最新にする。入力先の文章が読めるならそれを使い、読めなければ自分が確定した文字列をつなぐ。
+    /// - Parameter text: いま確定した文字列。入力先への反映が遅れるアプリでも文脈に含める。
+    private func syncContext(appending text: String) {
+        if let doc = contextProvider?() {
+            leftContext = doc.hasSuffix(text) ? doc : doc + text
+        } else {
+            leftContext += text
+        }
+        leftContext = String(leftContext.suffix(Self.contextWindow))
+    }
+
+    private static let contextWindow = 300
+
+    /// LLM が読みの続きを 1 文字ずつ予測するときに、自分の書き癖を混ぜるための関数。
+    private func habitHint() -> HabitHint? {
+        guard usesHabit else { return nil }
+        let userModel = self.userModel
+        let before = leftReading
+        return { soFar in userModel.habit(after: before + soFar) }
     }
 
     private func dismissGhost() {
@@ -507,6 +543,7 @@ public final class Session {
     /// 文脈を忘れる (入力先が変わったとき)。
     public func resetContext() {
         leftContext = ""
+        leftReading = ""
         lastCommit = nil
         dismissGhost()
     }
