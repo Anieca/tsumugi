@@ -8,6 +8,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/TsumugiIME "$APP/Contents/MacOS/"
 cp Resources/Info.plist "$APP/Contents/"
+sh scripts/build-app-icon.sh
+cp build/AppIcon.icns "$APP/Contents/Resources/"
 cp build/system.dict "$APP/Contents/Resources/system.dict"
 cp vendor/models/zenz-v3.2-small-Q5_K_M.gguf "$APP/Contents/Resources/zenz.gguf"
 swift scripts/make-icon.swift "紡" "$APP/Contents/Resources/icon.tiff"
