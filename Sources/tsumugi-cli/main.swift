@@ -73,6 +73,36 @@ case "proofread":
     } else {
         try ProofreadEval.run(path: args[1], model: model, converter: converter)
     }
+case "grammar":
+    // 試作の計測: tsumugi-cli grammar [--inject] <1 行 1 文のファイル>   書き損じの候補を出す
+    guard let model = ZenzModel(path: modelPath) else { fatalError("model load failed") }
+    try GrammarEval.run(path: args.dropFirst().first { $0 != "--inject" }!, model: model, inject: args.contains("--inject"))
+case "spacing":
+    // 計測: tsumugi-cli spacing <文章のファイル>...   半角と日本語の境目の空白を抜いて入れ直し、元の書き方と比べる
+    var same = 0, added = 0, missed = 0
+    for path in args.dropFirst() {
+        for line in try String(contentsOfFile: path, encoding: .utf8).split(separator: "\n") {
+            let chars = Array(line)
+            // 日本語と半角の文字にはさまれた空白 1 つだけを抜く
+            var stripped: [Character] = [], gaps = Set<Int>()   // gaps: stripped での位置 (その直前に空白があった)
+            for (i, c) in chars.enumerated() {
+                if c == " ", i > 0, i + 1 < chars.count, chars[i - 1] != " ", chars[i + 1] != " ",
+                   chars[i - 1].isASCII != chars[i + 1].isASCII { gaps.insert(stripped.count); continue }
+                stripped.append(c)
+            }
+            let out = Array(Spacing.spaced(String(stripped)))
+            var j = 0
+            for k in 0..<stripped.count {
+                var got = false
+                if j < out.count, out[j] == " ", stripped[k] != " " { got = true; j += 1 }
+                j += 1
+                guard k > 0, stripped[k - 1].isASCII != stripped[k].isASCII, stripped[k] != " ", stripped[k - 1] != " " else { continue }
+                let want = gaps.contains(k)
+                if want == got { same += 1 } else if got { added += 1 } else { missed += 1 }
+            }
+        }
+    }
+    print("境目 \(same + added + missed) か所: 元と同じ \(same)  元にない空白を入れた \(added)  元にある空白を入れなかった \(missed)")
 case "learn-words":
     // 例: tsumugi-cli learn-words <文章のファイル>...   自分が書いた文章から英単語の語彙を読み込む
     //     日本語を含む行に出てくる英単語だけを数え、単語と回数だけを保存する (文章は保存しない)

@@ -226,3 +226,23 @@ extension ZenzModel: ProofreadScorer {
         logProbability(text, leftContext: leftContext, as: .text)
     }
 }
+
+// MARK: 文法の見直し
+
+extension ZenzModel: TextScorer {
+    public func tokens(text: String, leftContext: String, alternatives: Int) -> [ScoredToken] {
+        lock.lock(); defer { lock.unlock() }
+        let head = Self.contextTag + String(leftContext.suffix(Self.contextLength))
+        let start = tokenize(head).count
+        let tokens = tokenize(head + text)
+        guard tokens.count > start, decode(tokens, logitsFrom: start - 1) else { return [] }
+        var out: [ScoredToken] = []
+        for i in start..<tokens.count {
+            guard let l = logits(at: i - 1) else { return [] }
+            let top = llm.top(l, count: alternatives).map { (String(decoding: piece($0.0), as: UTF8.self), $0.1) }
+            out.append(ScoredToken(text: String(decoding: piece(tokens[i]), as: UTF8.self),
+                                   probability: llm.probability(of: tokens[i], in: l), alternatives: top))
+        }
+        return out
+    }
+}

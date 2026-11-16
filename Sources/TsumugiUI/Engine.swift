@@ -63,6 +63,7 @@ public final class Engine {
 
     /// 確定した文を読み直して、変換の取り違えを挙げる。
     public private(set) lazy var proofreader: Proofreader? = converter.map { Proofreader(converter: $0, scorer: neural) }
+    public private(set) lazy var grammarChecker = GrammarChecker(scorer: neural)
 
     // MARK: 設定
 
@@ -150,6 +151,12 @@ extension NeuralProxy: ProofreadScorer {
 
     func logProbability(text: String, leftContext: String) -> Float? {
         model?.logProbability(text: text, leftContext: leftContext)
+    }
+}
+
+extension NeuralProxy: TextScorer {
+    func tokens(text: String, leftContext: String, alternatives: Int) -> [ScoredToken] {
+        model?.tokens(text: text, leftContext: leftContext, alternatives: alternatives) ?? []
     }
 }
 

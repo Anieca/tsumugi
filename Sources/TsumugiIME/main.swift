@@ -264,7 +264,7 @@ final class TsumugiInputController: IMKInputController {
 
     // MARK: 直し
 
-    /// 確定のあと手が止まったら、いまの文を読み直して変換の取り違えを探す。
+    /// 確定のあと手が止まったら、いまの文を読み直して変換の取り違えを探す。なければ、書き損じ (助詞の重複や脱字) を探す。
     private func scheduleProofread() {
         let engine = Engine.shared
         guard engine.proofreadEnabled, engine.isNeuralReady, let proofreader = engine.proofreader,
@@ -275,7 +275,9 @@ final class TsumugiInputController: IMKInputController {
                   let (text, whole) = self.contextBeforeCursor() else { return }
             let ignoring = engine.ignoredCorrections
             Self.proofQueue.async { [weak self] in
-                let found = proofreader.check(text, startsMidway: !whole, ignoring: ignoring) { self?.proofTicket.value != ticket }
+                let cancelled = { self?.proofTicket.value != ticket }
+                let found = proofreader.check(text, startsMidway: !whole, ignoring: ignoring, isCancelled: cancelled)
+                    ?? engine.grammarChecker.check(text, startsMidway: !whole, ignoring: ignoring, isCancelled: cancelled)
                 DispatchQueue.main.async {
                     // 確定直後の先読みが出ているときは、そちらを優先して出さない
                     guard let self, let found, self.proofTicket.value == ticket, self.session?.isComposing == false,
@@ -404,9 +406,9 @@ final class TsumugiInputController: IMKInputController {
     // すべての項目にアクションを持たせる (アクションのない項目や区切り線は入れない)。
     private lazy var statsItem = NSMenuItem(title: "", action: #selector(showStats(_:)), keyEquivalent: "")
     private lazy var predictItem = NSMenuItem(title: "続きを先読みする", action: #selector(togglePrediction(_:)), keyEquivalent: "")
-    private lazy var proofreadItem = NSMenuItem(title: "変換の取り違えを指摘する", action: #selector(toggleProofread(_:)), keyEquivalent: "")
+    private lazy var proofreadItem = NSMenuItem(title: "変換の取り違えや書き損じを指摘する", action: #selector(toggleProofread(_:)), keyEquivalent: "")
     private lazy var mixedItem = NSMenuItem(title: "英単語を切り替えなしで打つ", action: #selector(toggleMixed(_:)), keyEquivalent: "")
-    private lazy var spacingItem = NSMenuItem(title: "英字と日本語のあいだを空ける", action: #selector(toggleSpacing(_:)), keyEquivalent: "")
+    private lazy var spacingItem = NSMenuItem(title: "英数字と日本語のあいだを空ける", action: #selector(toggleSpacing(_:)), keyEquivalent: "")
     private lazy var pauseItem = NSMenuItem(title: "学習を一時停止", action: #selector(toggleLearning(_:)), keyEquivalent: "")
     private lazy var inputMenu: NSMenu = {
         let menu = NSMenu(title: "Tsumugi")

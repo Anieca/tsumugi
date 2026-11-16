@@ -128,4 +128,22 @@ final class LlamaRunner {
         for i in 0..<nVocab { sum += exp(logits[i] - maxLogit) }
         return exp(logits[Int(token)] - maxLogit) / sum
     }
+
+    /// 確率の高い順に k 個のトークンと、その確率。
+    func top(_ logits: UnsafeMutablePointer<Float>, count k: Int) -> [(llama_token, Float)] {
+        var maxLogit = logits[0]
+        for i in 1..<nVocab where logits[i] > maxLogit { maxLogit = logits[i] }
+        var sum: Float = 0
+        var best: [(Int, Float)] = []
+        for i in 0..<nVocab {
+            let v = logits[i]
+            sum += exp(v - maxLogit)
+            if best.count < k || v > best[best.count - 1].1 {
+                let at = best.firstIndex { $0.1 < v } ?? best.count
+                best.insert((i, v), at: at)
+                if best.count > k { best.removeLast() }
+            }
+        }
+        return best.map { (llama_token($0.0), exp($0.1 - maxLogit) / sum) }
+    }
 }
