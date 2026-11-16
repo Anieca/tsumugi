@@ -75,6 +75,7 @@ final class TsumugiInputController: IMKInputController {
                 }
             }
             self?.textClient?.insertText(text, replacementRange: NSRange(location: NSNotFound, length: NSNotFound))
+            Engine.shared.writingLog.commit(text, app: self?.textClient?.bundleIdentifier())
             self?.hadMarkedText = false
             self?.scheduleProofread()
         }
@@ -123,6 +124,33 @@ final class TsumugiInputController: IMKInputController {
 
     private var textClient: IMKTextInput? { client() }
 
+    // MARK: 文章の記録 (有効なときだけ。WritingLog を参照)
+
+    /// アプリへそのまま渡すキーを記録する。改行なら、その直前の文章の姿も残す (送信されると読めなくなるため)。
+    private func logPassThrough(_ event: NSEvent) {
+        let log = Engine.shared.writingLog
+        guard log.isEnabled, let client = textClient else { return }
+        let app = client.bundleIdentifier()
+        guard event.modifierFlags.intersection([.command, .control]).isEmpty else { return }
+        switch event.keyCode {
+        case 51: log.delete(app: app)
+        case 36, 76:
+            logSnapshot()
+            log.direct("\n", app: app)
+        default:
+            // 矢印などの機能キーは文字ではない (Unicode の私用領域で届く)
+            guard let ch = event.characters, !ch.isEmpty,
+                  ch.unicodeScalars.allSatisfy({ $0.value >= 0x20 && $0.value != 0x7F && !(0xF700...0xF8FF).contains($0.value) }) else { return }
+            log.direct(ch, app: app)
+        }
+    }
+
+    private func logSnapshot() {
+        let log = Engine.shared.writingLog
+        guard log.isEnabled, let client = textClient, let text = textBeforeCursor() else { return }
+        log.snapshot(text, app: client.bundleIdentifier())
+    }
+
     // MARK: イベント
 
     override func recognizedEvents(_ sender: Any!) -> Int {
@@ -150,7 +178,7 @@ final class TsumugiInputController: IMKInputController {
         // 英字モードで何も入力していなければ、打鍵はそのままアプリへ
         if directInput && !session.isComposing {
             assistPanel.hide()
-            if event.keyCode == 51 { skipsDirectSpacing = true; return false }
+            if event.keyCode == 51 { skipsDirectSpacing = true; logPassThrough(event); return false }
             defer { skipsDirectSpacing = false }
             // 日本語のすぐあとに英字を打ちはじめたら、あいだに空白を補う
             let mods = event.modifierFlags.intersection([.command, .control, .option])
@@ -158,14 +186,16 @@ final class TsumugiInputController: IMKInputController {
                let ch = event.characters, ch.count == 1, Spacing.needsSpace(after: tailBeforeInsertion(), before: ch),
                let client = textClient {
                 client.insertText(" " + ch, replacementRange: NSRange(location: NSNotFound, length: NSNotFound))
+                Engine.shared.writingLog.direct(" " + ch, app: client.bundleIdentifier())
                 ContextProbe.trace("空白を補った\t英字の前")
                 return true
             }
+            logPassThrough(event)
             return false
         }
         guard let key = KeyMapping.key(for: event) else {
             // ショートカットなどはアプリへ。先読みは消しておく
-            if !session.isComposing { assistPanel.hide() }
+            if !session.isComposing { assistPanel.hide(); logPassThrough(event) }
             return false
         }
         let before = session.view
@@ -174,14 +204,16 @@ final class TsumugiInputController: IMKInputController {
         ContextProbe.trace("キー \(ContextProbe.name(key))\t文節 \(before.segments.count)→\(session.view.segments.count)\t字数 \(before.segments.joined().count)→\(session.view.segments.joined().count)\t\(handled ? "処理" : "素通し")")
         // 日本語モードでも、かなにならない数字や記号はそのままアプリへ渡る。日本語のすぐあとなら、あいだに空白を補う
         if !handled, !session.isComposing {
-            if case .backspace = key { skipsDirectSpacing = true; return false }
+            if case .backspace = key { skipsDirectSpacing = true; logPassThrough(event); return false }
             defer { skipsDirectSpacing = false }
             if case .char(let c) = key, Engine.shared.autoSpacingEnabled, !skipsDirectSpacing,
                Spacing.needsSpace(after: tailBeforeInsertion(), before: String(c)), let client = textClient {
                 client.insertText(" " + String(c), replacementRange: NSRange(location: NSNotFound, length: NSNotFound))
+                Engine.shared.writingLog.direct(" " + String(c), app: client.bundleIdentifier())
                 ContextProbe.trace("空白を補った\t数字・記号の前")
                 return true
             }
+            logPassThrough(event)
         }
         // アプリへ渡したキー (改行や矢印) でカーソルが動く。先読みが出たままなら、動いたあとの位置へ移す
         if !handled, !session.isComposing, session.view.ghost != nil {
@@ -224,6 +256,8 @@ final class TsumugiInputController: IMKInputController {
         proofTicket.advance()
         correction = nil
         session?.commitAll()
+        logSnapshot()
+        Engine.shared.writingLog.flush()
         session?.resetContext()
         render()
         assistPanel.hide()
@@ -369,6 +403,7 @@ final class TsumugiInputController: IMKInputController {
         if !edit.plain.isEmpty {
             client.insertText(edit.plain, replacementRange: NSRange(location: NSNotFound, length: NSNotFound))
         }
+        Engine.shared.writingLog.fix(from: c.from, to: c.to, app: client.bundleIdentifier())
         ContextProbe.trace("直しを適用")
         assistPanel.hide()
         // 範囲を指定した置き換えを正しく扱わないアプリがありうる。置き換えたあとの文章を読み直し、
@@ -421,6 +456,7 @@ final class TsumugiInputController: IMKInputController {
     private lazy var mixedItem = NSMenuItem(title: "英単語を切り替えなしで打つ", action: #selector(toggleMixed(_:)), keyEquivalent: "")
     private lazy var spacingItem = NSMenuItem(title: "英数字と日本語のあいだを空ける", action: #selector(toggleSpacing(_:)), keyEquivalent: "")
     private lazy var pauseItem = NSMenuItem(title: "学習を一時停止", action: #selector(toggleLearning(_:)), keyEquivalent: "")
+    private lazy var writingItem = NSMenuItem(title: "打った文章を記録する (この Mac の中だけ)", action: #selector(toggleWritingLog(_:)), keyEquivalent: "")
     private lazy var inputMenu: NSMenu = {
         let menu = NSMenu(title: "Tsumugi")
         menu.addItem(statsItem)
@@ -430,6 +466,8 @@ final class TsumugiInputController: IMKInputController {
         menu.addItem(mixedItem)
         menu.addItem(pauseItem)
         menu.addItem(NSMenuItem(title: "学習した内容をすべて消去…", action: #selector(forgetAll(_:)), keyEquivalent: ""))
+        menu.addItem(writingItem)
+        menu.addItem(NSMenuItem(title: "記録した文章を消去…", action: #selector(eraseWritingLog(_:)), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Tsumugi について…", action: #selector(showAbout(_:)), keyEquivalent: ""))
         return menu
     }()
@@ -443,6 +481,7 @@ final class TsumugiInputController: IMKInputController {
         spacingItem.state = engine.autoSpacingEnabled ? .on : .off
         mixedItem.state = engine.mixedInputEnabled ? .on : .off
         pauseItem.state = engine.learningPaused ? .on : .off
+        writingItem.state = engine.writingLogEnabled ? .on : .off
         return inputMenu
     }
 
@@ -496,6 +535,35 @@ final class TsumugiInputController: IMKInputController {
 
     @objc func toggleLearning(_ sender: Any?) {
         Engine.shared.learningPaused.toggle()
+    }
+
+    /// 有効にするときは、何がどこに残るかを見せて確かめる。
+    @objc func toggleWritingLog(_ sender: Any?) {
+        let engine = Engine.shared
+        if engine.writingLogEnabled { engine.writingLogEnabled = false; return }
+        let alert = NSAlert()
+        alert.messageText = "打った文章を記録しますか？"
+        alert.informativeText = """
+        Tsumugi で入れた文字、削除キーの回数、反映した直し、改行する直前のカーソルの手前の文章 (最大 300 字) を、\
+        この Mac の ~/Library/Application Support/Tsumugi/writing に残します。どこにも送りません。
+        パスワード欄では記録されません (macOS が入力メソッドを呼ばないため)。それ以外の欄に打った内容はすべて残ります。
+        """
+        alert.addButton(withTitle: "記録する")
+        alert.addButton(withTitle: "キャンセル")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn { engine.writingLogEnabled = true }
+    }
+
+    @objc func eraseWritingLog(_ sender: Any?) {
+        let log = Engine.shared.writingLog
+        let alert = NSAlert()
+        alert.messageText = "記録した文章を消去しますか？"
+        alert.informativeText = "この Mac に残した文章の記録 (\(ByteCountFormatter.string(fromByteCount: Int64(log.size), countStyle: .file))) を削除します。取り消せません。"
+        alert.addButton(withTitle: "消去")
+        alert.addButton(withTitle: "キャンセル")
+        alert.alertStyle = .warning
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn { log.eraseAll() }
     }
 
     @objc func forgetAll(_ sender: Any?) {

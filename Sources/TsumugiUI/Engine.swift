@@ -91,6 +91,22 @@ public final class Engine {
         set { defaults.set(newValue, forKey: "autoSpacingEnabled") }
     }
 
+    /// 打った文章の記録 (文体の直しを作るための材料)。ふだんは無効。
+    public private(set) lazy var writingLog: WritingLog = {
+        let extra = defaults.stringArray(forKey: "writingLogExcludedApps") ?? []
+        return WritingLog(directory: ProcessInfo.processInfo.environment["TSUMUGI_USER_MODEL"] == nil ? WritingLog.defaultDirectory() : nil,
+                          isEnabled: defaults.bool(forKey: "writingLogEnabled"),
+                          excludedApps: WritingLog.defaultExcludedApps.union(extra))
+    }()
+
+    public var writingLogEnabled: Bool {
+        get { writingLog.isEnabled }
+        set {
+            writingLog.isEnabled = newValue
+            defaults.set(newValue, forKey: "writingLogEnabled")
+        }
+    }
+
     /// 日本語モードのまま打った英単語を見分けるか。
     public var mixedInputEnabled: Bool {
         get { defaults.object(forKey: "mixedInputEnabled") as? Bool ?? true }
