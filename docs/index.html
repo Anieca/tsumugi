@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tsumugi — ローカル LLM を内蔵した日本語入力メソッド</title>
+<meta name="description" content="Tsumugi は、小さな LLM を内蔵した macOS の日本語入力メソッドです。文脈を読んで変換し、続きを先読みし、取り違えを後から指摘します。変換も学習もすべて Mac の中。">
+<link rel="icon" href="images/icon.png">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./"><img src="images/icon.png" alt="">Tsumugi</a>
+    <nav>
+      <a href="#features">できること</a>
+      <a href="#privacy">プライバシー</a>
+      <a href="#install">インストール</a>
+      <a href="releases.html">リリースノート</a>
+      <a href="https://github.com/Anieca/tsumugi">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <div>
+      <h1>ことばを、紡ぐ。<br>文脈を読む日本語入力。</h1>
+      <p class="lead">Tsumugi は、小さな LLM を内蔵した macOS の日本語入力メソッドです。書いている文章を読んで同音異義語を選び、続きを先読みし、取り違えを後からそっと指摘します。変換も学習も、すべてこの Mac の中で行います。</p>
+      <div class="badges">
+        <span class="badge">macOS 13 以降・Apple Silicon</span>
+        <span class="badge">オフラインで動く</span>
+        <span class="badge">オープンソース (MIT)</span>
+        <span class="badge">v0.5.0</span>
+      </div>
+      <div class="cta">
+        <a class="btn primary" href="#install">インストールする</a>
+        <a class="btn ghost" href="releases.html">リリースノート</a>
+      </div>
+    </div>
+    <img class="icon" src="images/icon.png" alt="Tsumugi のアイコン。藍色の地に絹糸で描いた「つ」">
+  </div>
+</div>
+
+<main>
+
+<section id="features">
+  <div class="wrap">
+    <h2>できること</h2>
+    <p class="sub">ふだんどおりローマ字で打つだけ。必要なときだけ、小さく手を貸します。</p>
+
+    <div class="feature">
+      <div>
+        <h3>打ったそばから漢字になり、文脈で選び直す</h3>
+        <p>変換の土台は、自作の変換コア (ラティス + Viterbi) と Mozc の辞書。そこに超小型の言語モデル zenz (74MB) が加わり、カーソルより前の文章を読んで同音異義語を選びます。</p>
+        <p>前に「原稿の誤字を直したので、」と書いてあれば、「こうせい」は「校正」に。1 回 10〜30ms で、打鍵を待たせません。</p>
+        <p class="note">候補は <kbd>Space</kbd> で開き、<kbd>←</kbd> <kbd>→</kbd> で文節を移り、<kbd>Shift</kbd>+<kbd>←</kbd> <kbd>→</kbd> で区切りを伸び縮みさせます。</p>
+      </div>
+      <div class="stage" aria-label="変換の例">
+        <div class="doc"><span class="ctx">原稿の誤字を直したので、</span><span class="pre">校正</span><span class="caret"></span></div>
+        <div class="cands" aria-hidden="true">
+          <div><span>1</span>構成</div>
+          <div class="on"><span>2</span>校正</div>
+          <div><span>3</span>厚生</div>
+          <div><span>4</span>公正</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="feature">
+      <div>
+        <h3>続きが言い切れるときだけ、Tab で先読み</h3>
+        <p>入力の履歴と LLM から、続きを予測します。確かなときだけ、カーソルのそばに小さく出します。<kbd>Tab</kbd> で確定、無視して打ち続ければ消えます。</p>
+        <p>予測は、書いている文書の文脈と、自分の書き癖を踏まえます。よく書く挨拶やいつもの言い回しほど、少ない打鍵で書けるようになります。</p>
+      </div>
+      <div class="stage" aria-label="先読みの例">
+        <div class="doc"><span class="ctx">資料をお送りいただき、</span><span class="pre">ありが</span><span class="caret"></span></div>
+        <div class="pill"><span class="ico spark">✦</span><span>ありがとうございます</span><span class="key">tab</span></div>
+      </div>
+    </div>
+
+    <div class="feature">
+      <div>
+        <h3>取り違えを、後からそっと指摘</h3>
+        <p>文がひとまとまりになって手が止まったとき、文全体を読み直します。「仕様率 → 使用率」のような同音の取り違え、変換し忘れ、「をを」のような助詞の重複、「行きした」のような脱字を見つけたら、小さく提案します。</p>
+        <p><kbd>Tab</kbd> で反映。無視すれば消え、3 回見送った提案は二度と出しません。言い回しや文体には手を出しません。</p>
+        <p class="note">入力先の文章を読めないアプリでは出ません。</p>
+      </div>
+      <div class="stage" aria-label="直しの提案の例">
+        <div class="doc">CPU の仕様率が高い<span class="caret"></span></div>
+        <div class="pill"><span class="ico fix">✎</span><span class="from">の仕様率</span><span class="arrow">→</span><span>の使用率</span><span class="key">tab</span></div>
+      </div>
+    </div>
+
+    <div class="feature">
+      <div>
+        <h3>英単語も、切り替えずにそのまま</h3>
+        <p>日本語モードのまま英単語を続けて打てます。自分が書いたことのある語、大文字ではじめた語、ローマ字にならない綴りを英字とみなします。</p>
+        <p>英字と日本語のあいだ、数字と日本語のあいだには、打ち忘れた空白を自動で補います (「Tab で直す」「3 件」)。外れたときは英数キー (<kbd>Ctrl</kbd>+<kbd>L</kbd> / <kbd>F10</kbd>) で直せば、次からはその語も英字になります。</p>
+      </div>
+      <div class="stage" aria-label="英単語の例">
+        <div class="typed">打鍵: <b>tabdenaosu</b></div>
+        <div class="doc"><span class="pre">Tab で直す</span><span class="caret"></span></div>
+        <div class="typed">打鍵: <b>NYryokou</b></div>
+        <div class="doc"><span class="pre">NY 旅行</span></div>
+      </div>
+    </div>
+
+    <div class="feature">
+      <div>
+        <h3>使うほど、自分の入力になる</h3>
+        <p>選び直した変換、確定した言い回し、続けて打つ句のつながり、読みの並び (書き癖) を覚えます。学習はいつでも一時停止でき、まるごと消せます。</p>
+      </div>
+      <div class="grid3" style="grid-template-columns:1fr 1fr">
+        <div class="card"><div class="mark">選</div><p>選び直した変換は、次から最初に出る</p></div>
+        <div class="card"><div class="mark">癖</div><p>よく打つ句のつながりを先読みに生かす</p></div>
+        <div class="card"><div class="mark">止</div><p>学習は入力メニューから一時停止できる</p></div>
+        <div class="card"><div class="mark">消</div><p>学習内容は 1 ファイル。いつでも全消去</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="privacy">
+  <div class="wrap">
+    <h2>プライバシー</h2>
+    <p class="sub">入力内容を、ネットワークに送る処理はありません。</p>
+    <div class="grid3">
+      <div class="card">
+        <div class="mark">端末内</div>
+        <p>変換・予測・学習はすべて Mac の中。LLM も Mac の上で動きます。</p>
+      </div>
+      <div class="card">
+        <div class="mark">読むだけ</div>
+        <p>先読みと直しのため、カーソルより前の文章 (最大 300 字) を読みます。メモリ上で使うだけで、保存しません。</p>
+      </div>
+      <div class="card">
+        <div class="mark">1 ファイル</div>
+        <p>学習内容は <code>user_model.json</code> の 1 ファイルだけ (本人のみ読み書き可)。入力メニューから消せます。</p>
+      </div>
+    </div>
+    <div class="callout">
+      <strong>打った文章の記録 (ふだんは無効)</strong><br>
+      入力メニューの「打った文章を記録する」を有効にしたときだけ、入れた文字・削除キーの回数・反映した直し・改行する直前の文章を <code>~/Library/Application Support/Tsumugi/writing/</code> に残します。文体の直しを作るための材料で、どこにも送りません。パスワード管理アプリでは記録せず、「記録した文章を消去…」でいつでも消せます。
+    </div>
+    <p style="font-size:.9rem;color:var(--muted)">パスワード欄では、macOS の仕様で入力メソッドそのものが呼ばれません。</p>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>インストール</h2>
+    <p class="sub">いまは個人開発の試作段階です。署名済みのインストーラはまだないため、ソースからビルドします。</p>
+
+    <p>必要なもの: Apple Silicon の Mac (M1 以降)、macOS 13 以降、Xcode (Swift 5.9 以降)、python3、cmake (なければ Homebrew で入れます)。ダウンロードとビルドで 10 分ほど、空きは約 1.5GB 要ります。</p>
+    <pre><code>curl -fsSL https://raw.githubusercontent.com/Anieca/tsumugi/main/install.sh | sh</code></pre>
+    <p>辞書・モデル・llama.cpp を用意してビルドし、<code>~/Library/Input Methods</code> に入れて入力ソースとして有効にします。終わったら、メニューバーの入力メニューから Tsumugi を選んでください。一覧に出ないときは、一度ログアウトしてログインし直します。</p>
+    <ul class="plain">
+      <li><strong>更新</strong>: 同じコマンドをもう一度実行します。版を指定するなら <code>TSUMUGI_REF=v0.5.0</code> を付けます。</li>
+      <li><strong>削除</strong>: <code>sh ~/.local/src/tsumugi/scripts/uninstall.sh</code> (学習内容も消すなら <code>--purge</code>)</li>
+    </ul>
+
+    <h3 style="margin-top:2em">キー操作</h3>
+    <table>
+      <tr><th>キー</th><th>はたらき</th></tr>
+      <tr><td>文字</td><td>ローマ字入力。打つそばから変換される</td></tr>
+      <tr><td><kbd>Tab</kbd></td><td>先読みを確定 / 直しの提案を反映 (どちらも、出ているときだけ。出ていなければアプリへ渡す)</td></tr>
+      <tr><td><kbd>Space</kbd></td><td>候補を開く / 次の候補</td></tr>
+      <tr><td><kbd>←</kbd> <kbd>→</kbd> / <kbd>Shift</kbd>+<kbd>←</kbd> <kbd>→</kbd></td><td>文節の移動 / 伸縮</td></tr>
+      <tr><td><kbd>Enter</kbd> / <kbd>Esc</kbd></td><td>確定 / 取り消し</td></tr>
+      <tr><td><kbd>F6</kbd> <kbd>F7</kbd> <kbd>F10</kbd><br>(<kbd>Ctrl</kbd>+<kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd>)</td><td>ひらがな・カタカナ・英数。英数は末尾の語を英単語にする (続けて押すと語のはじまりが変わる)</td></tr>
+    </table>
+    <p style="font-size:.92rem;color:var(--muted)">先読み・直しの提案・空白の補い・英単語の扱い・学習・文章の記録は、どれもメニューバーの入力メニュー (「つ」の印) から切り替えられます。</p>
+  </div>
+</section>
+
+<section id="more">
+  <div class="wrap">
+    <h2>もっと知る</h2>
+    <div class="grid3">
+      <a class="card" href="releases.html" style="text-decoration:none;color:inherit"><div class="mark">新</div><h3>リリースノート</h3><p>版ごとに何が変わったか</p></a>
+      <a class="card" href="https://github.com/Anieca/tsumugi/blob/main/docs/DESIGN.md" style="text-decoration:none;color:inherit"><div class="mark">設</div><h3>設計と実測値</h3><p>変換・先読み・直しの考え方と、測った数字</p></a>
+      <a class="card" href="https://github.com/Anieca/tsumugi" style="text-decoration:none;color:inherit"><div class="mark">源</div><h3>ソースコード</h3><p>GitHub で公開しています (MIT License)</p></a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Tsumugi — MIT License。辞書は Mozc (BSD 3-Clause)、モデルは <a href="https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf">zenz</a> (CC BY-SA 4.0)、推論は llama.cpp (MIT)。</span>
+    <a href="https://github.com/Anieca/tsumugi">github.com/Anieca/tsumugi</a>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -12,7 +12,7 @@
 
 ![直しの提案](docs/images/correction.png)
 
-設計の考え方と実測値は [docs/DESIGN.md](docs/DESIGN.md)。
+紹介ページは [anieca.github.io/tsumugi](https://anieca.github.io/tsumugi/)、版ごとの変更は [リリースノート](https://anieca.github.io/tsumugi/releases.html)。設計の考え方と実測値は [docs/DESIGN.md](docs/DESIGN.md)。
 
 > **いまの状態**: 個人開発の試作段階です。署名済みのインストーラはまだ配布していないため、ソースからビルドして使います。
 > Apple Silicon の Mac (M1 以降) で動作を確認しています。

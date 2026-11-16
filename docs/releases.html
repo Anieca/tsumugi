@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>リリースノート — Tsumugi</title>
+<meta name="description" content="Tsumugi の版ごとの変更点。">
+<link rel="icon" href="images/icon.png">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./"><img src="images/icon.png" alt="">Tsumugi</a>
+    <nav>
+      <a href="./#features">できること</a>
+      <a href="./#privacy">プライバシー</a>
+      <a href="./#install">インストール</a>
+      <a href="releases.html" aria-current="page">リリースノート</a>
+      <a href="https://github.com/Anieca/tsumugi">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section>
+  <div class="wrap">
+    <h2>リリースノート</h2>
+    <p class="sub">版は Semantic Versioning に従います。1.0 までは、操作感や学習データの形式が変わることがあります。<br>
+    更新はインストールと同じコマンドをもう一度実行するだけです。版を選ぶなら <code>TSUMUGI_REF=v0.5.0</code> のように付けます。</p>
+
+    <article class="release" id="v0.5.0">
+      <div class="ver"><strong>0.5.0<span class="latest">最新</span></strong><time datetime="2026-11-16">2026 年 11 月 16 日</time><br><a class="tag" href="https://github.com/Anieca/tsumugi/tree/v0.5.0">v0.5.0</a></div>
+      <div>
+        <h3>打った文章を、この Mac の中に記録できるように</h3>
+        <p>次に作りたい「文体の直し」(要らない言葉を削るなど) の材料を集めるための機能です。手元に残る文章は直し終えたものだけで、どう書き直したかは残りません。そこで、書いている途中の経過を記録できるようにしました。</p>
+        <ul>
+          <li><span class="kind new">新機能</span>入力メニューの「打った文章を記録する (この Mac の中だけ)」で有効にできます。<strong>ふだんは無効</strong>です。</li>
+          <li><span class="kind new">新機能</span>残すのは、確定して入れた文字、英字モードで打った文字、削除キーを押した回数、Tab で反映した直し、改行する直前と入力先を離れるときのカーソル手前の文章です。</li>
+          <li><span class="kind new">新機能</span>記録は <code>~/Library/Application Support/Tsumugi/writing/</code> に月ごとのファイルで残り、本人だけが読み書きできます。どこにも送りません。</li>
+          <li><span class="kind new">新機能</span>パスワード管理アプリでは記録しません。<code>writingLogExcludedApps</code> で除くアプリを足せます。「記録した文章を消去…」でまとめて消せます。</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="release" id="v0.4.0">
+      <div class="ver"><strong>0.4.0</strong><time datetime="2026-11-16">2026 年 11 月 16 日</time><br><a class="tag" href="https://github.com/Anieca/tsumugi/tree/v0.4.0">v0.4.0</a></div>
+      <div>
+        <h3>書き損じも指摘し、空白の補い方を整えた</h3>
+        <ul>
+          <li><span class="kind new">新機能</span>確定して手が止まったとき、変換の取り違えに加えて書き損じも指摘します。助詞の重複 (をを)、同じ語の繰り返し (するする)、ひらがな 1 文字の脱字 (行きした → 行きました)、助詞の取り違え。Tab で直せます。</li>
+          <li><span class="kind chg">改善</span>数字と日本語のあいだも空けます (3 件、11 月 16 日)。日本語モードのまま打った数字の前にも補います。</li>
+          <li><span class="kind chg">改善</span>英字 1 文字は、ひらがなとのあいだだけ空けます (A の場合、Tシャツ)。コードを囲むバッククォートの外側も空けます。句読点・かっこ・スラッシュの前後は空けません。</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="release" id="v0.3.1">
+      <div class="ver"><strong>0.3.1</strong><time datetime="2026-11-16">2026 年 11 月 16 日</time><br><a class="tag" href="https://github.com/Anieca/tsumugi/tree/v0.3.1">v0.3.1</a></div>
+      <div>
+        <h3>直しの反映を確実に</h3>
+        <ul>
+          <li><span class="kind chg">改善</span>入力メニューと切り替え時のアイコンを、角丸の四角から「つ」を抜いた形にしました。切り替え時の青い表示でも見えます。</li>
+          <li><span class="kind fix">修正</span>Chromium 系のアプリで 1〜2 文字の直しを反映すると、元の文字が消えずに後ろへ足されていた (「絵維持」→「絵維持英字」)。</li>
+          <li><span class="kind chg">改善</span>直しを反映できなかったときは、その場で知らせます (⌘Z で戻せます)。失敗したアプリには、次の版まで提案しません。</li>
+          <li><span class="kind fix">修正</span>直しが出ているときの Tab が、反映に失敗した場合にアプリへ渡り、フォーカスが隣の欄へ移っていた。</li>
+          <li><span class="kind fix">修正</span>1 文字の語を一度選んだだけで、その字ではじまる別の語まで割って変換していた (「えいじ」→「絵維持」)。</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="release" id="v0.3.0">
+      <div class="ver"><strong>0.3.0</strong><time datetime="2026-11-16">2026 年 11 月 16 日</time><br><a class="tag" href="https://github.com/Anieca/tsumugi/tree/v0.3.0">v0.3.0</a></div>
+      <div>
+        <h3>英単語を、切り替えずに打てるように</h3>
+        <ul>
+          <li><span class="kind new">新機能</span>日本語モードのまま英単語を打てます。<code>tabdenaosu</code> で「Tab で直す」。手がかりは、自分が書いたことのある語・大文字ではじめた語・ローマ字にならない綴り・OS 付属の単語表です。</li>
+          <li><span class="kind new">新機能</span>外れたときは英数キー (Ctrl+L / F10) で末尾を英単語に。続けて押すと語のはじまりが変わります。直した語は次から自動で英字になります。</li>
+          <li><span class="kind chg">改善</span>候補でかなを選び直した語は、英字にしにくくなります。英単語を 1 語ずつ確定したときも、あいだに空白を補います。</li>
+          <li><span class="kind new">新機能</span>アプリにアイコンを付けました (藍色の地に絹糸の「つ」)。</li>
+          <li><span class="kind new">新機能</span><code>tsumugi-cli learn-words</code> で、自分が書いた文章から英単語の語彙を読み込めます (単語と回数だけを保存)。</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="release" id="v0.2.4">
+      <div class="ver"><strong>0.2.4</strong><time datetime="2026-11-15">2026 年 11 月 15 日</time><br><a class="tag" href="https://github.com/Anieca/tsumugi/tree/v0.2.4">v0.2.4</a></div>
+      <div>
+        <h3>英字と日本語のあいだの空白を自動で</h3>
+        <ul>
+          <li><span class="kind new">新機能</span>英字と日本語のあいだの半角の空白を、打ち忘れたときに補います (「Tabで」→「Tab で」)。入力メニューで切れます。</li>
+          <li><span class="kind chg">改善</span>直しの反映を Tab だけにしました (Shift+Tab は廃止)。</li>
+          <li><span class="kind chg">改善</span>Space の 1 回目は、いまの変換を選んだまま候補を開くだけにしました。</li>
+          <li><span class="kind chg">改善</span>選んだ変換を 60 秒以内に同じ読みで直したら、前の選択を学習から外します。</li>
+          <li><span class="kind fix">修正</span>改行した直後に、先読みや直しが前の行の右端に出ていた。</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="release" id="v0.2.3">
+      <div class="ver"><strong>0.2.3</strong><time datetime="2026-11-15">2026 年 11 月 15 日</time><br><a class="tag" href="https://github.com/Anieca/tsumugi/tree/v0.2.3">v0.2.3</a></div>
+      <div>
+        <ul>
+          <li><span class="kind fix">修正</span>Notion や Claude など Chromium 系のアプリで、入力欄が 100 字を超えると直しの提案も文脈を踏まえた変換も働かなくなっていた。</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="release" id="v0.2.2">
+      <div class="ver"><strong>0.2.2</strong><time datetime="2026-11-15">2026 年 11 月 15 日</time><br><a class="tag" href="https://github.com/Anieca/tsumugi/tree/v0.2.2">v0.2.2</a></div>
+      <div>
+        <ul>
+          <li><span class="kind chg">改善</span>直しの提案を Tab で反映できるようにしました。提案が出ていないときの Tab は、これまでどおりアプリへ渡します。</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="release" id="v0.2.1">
+      <div class="ver"><strong>0.2.1</strong><time datetime="2026-11-15">2026 年 11 月 15 日</time><br><a class="tag" href="https://github.com/Anieca/tsumugi/tree/v0.2.1">v0.2.1</a></div>
+      <div>
+        <ul>
+          <li><span class="kind fix">修正</span>Electron 系のアプリ (チャット欄など) で、直しの提案が画面の外に出て見えなかった。</li>
+          <li><span class="kind fix">修正</span>Electron 系のアプリで、直しを反映するキーがアプリにも伝わり、フォーカスが前の欄へ移っていた。</li>
+          <li><span class="kind chg">改善</span>反映のあとの確認でカーソルの位置も見て、末尾に足されただけの失敗を見逃さないようにしました。</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="release" id="v0.2.0">
+      <div class="ver"><strong>0.2.0</strong><time datetime="2026-11-15">2026 年 11 月 15 日</time><br><a class="tag" href="https://github.com/Anieca/tsumugi/tree/v0.2.0">v0.2.0</a></div>
+      <div>
+        <h3>取り違えを、後から指摘する</h3>
+        <ul>
+          <li><span class="kind new">新機能</span>確定した文を文全体の読みで読み直し、同音の取り違えや変換し忘れ (仕様率 → 使用率、じょうで → 上で) を小さく提案します。3 回見送った提案は出さなくなります。入力メニューから切れます。</li>
+          <li><span class="kind new">新機能</span><code>tsumugi-cli proofread</code> で直しの提案を計測でき、<code>tsumugi-cli score</code> で文の自然さを見られます。</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="release" id="v0.1.0">
+      <div class="ver"><strong>0.1.0</strong><time datetime="2026-11-15">2026 年 11 月 15 日</time><br><a class="tag" href="https://github.com/Anieca/tsumugi/tree/v0.1.0">v0.1.0</a></div>
+      <div>
+        <h3>最初の公開版</h3>
+        <ul>
+          <li>ローマ字入力、ライブ変換、Space での候補選択、文節の伸縮</li>
+          <li>Mozc の辞書による変換と、zenz-v3.2-small による候補の並べ替え</li>
+          <li>カーソル前の文章 (最大 300 字) を文脈として変換・先読みに使う</li>
+          <li>Tab で続きを先読み入力</li>
+          <li>選んだ変換と読みの書き癖を、この Mac の中だけで学習。入力メニューから一時停止・全消去</li>
+          <li><code>install.sh</code> による一括インストールと更新、<code>scripts/uninstall.sh</code></li>
+        </ul>
+      </div>
+    </article>
+
+    <p style="font-size:.9rem;color:var(--muted)">細かな変更は <a href="https://github.com/Anieca/tsumugi/blob/main/CHANGELOG.md">CHANGELOG.md</a> にあります。</p>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Tsumugi — MIT License</span>
+    <a href="https://github.com/Anieca/tsumugi">github.com/Anieca/tsumugi</a>
+  </div>
+</footer>
+
+</body>
+</html>
