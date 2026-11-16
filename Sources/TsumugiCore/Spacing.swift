@@ -7,7 +7,7 @@ import Foundation
 ///
 /// - 英字・数字と、かな・漢字のあいだは空ける (英字のあと 92%、数字のあと 80% が空けていた)。数字に付いた % も数字として扱う。
 /// - 句読点・かっこ・スラッシュなどの記号の前後は空けない (記号には触らない)。
-/// - 日付と大きな数の単位 (年月日時、万億兆) は数字に付ける (空ける・空けないが半々だった。ガイドは空けるが、付けるほうがふつうの書き方)。
+/// - 日付や大きな数の単位 (年月日、万億) も例外にしない (過去の文章では半々だったので、ガイドに合わせて空ける)。
 /// - 英字 1 文字だけの語は、カタカナ・漢字と続くなら空けない (T シャツではなく Tシャツ)。ひらがなとのあいだは空ける (A の場合)。
 /// - コードを囲むバッククォートの外側は空ける (過去の文章ではすべて空けていた)。
 public enum Spacing {
@@ -35,9 +35,6 @@ public enum Spacing {
             || (0x4E00...0x9FFF).contains(v) || v == 0x3005
     }
 
-    /// 数字に付けて書く単位。
-    private static let attached: Set<Character> = ["年", "月", "日", "時", "万", "億", "兆"]
-
     /// 半角の語 (英数字、数字に付いた %、閉じのバッククォート) のあとに日本語が続くとき、空けるか。
     /// - Parameter before: 日本語の直前までの文章 (末尾の 2 文字を見る)。
     private static func spaceAfterHalf(_ before: Substring, japanese n: Character) -> Bool {
@@ -49,7 +46,7 @@ public enum Spacing {
         }
         if p == "%" { return pp.map(isDigit) ?? false }
         guard isAlnum(p) else { return false }
-        if isDigit(p) { return !attached.contains(n) }
+        if isDigit(p) { return true }
         // 英字 1 文字だけの語は、ひらがなとのあいだだけ空ける
         if !(pp.map(isAlnum) ?? false) { return isHiragana(n) }
         return true
@@ -62,10 +59,7 @@ public enum Spacing {
     private static func spaceBeforeHalf(_ before: Substring, _ next: Substring) -> Bool {
         guard let p = before.last, let n = next.first else { return false }
         guard isAlnum(n) else { return false }
-        if isDigit(n) {
-            // 「11月16日」のように、数字に付けた単位のすぐあとの数字は続けて書く
-            return !(attached.contains(p) && (before.dropLast().last.map(isDigit) ?? false))
-        }
+        if isDigit(n) { return true }
         guard let nn = next.dropFirst().first else { return true }
         if isAlnum(nn) { return true }
         // 英字 1 文字だけの語は、ひらがなとのあいだだけ空ける。カタカナ・漢字が続くなら、ひと続きの語 (A型)
