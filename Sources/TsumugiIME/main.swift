@@ -172,6 +172,17 @@ final class TsumugiInputController: IMKInputController {
         let handled = session.handle(key)
         render()
         ContextProbe.trace("キー \(ContextProbe.name(key))\t文節 \(before.segments.count)→\(session.view.segments.count)\t字数 \(before.segments.joined().count)→\(session.view.segments.joined().count)\t\(handled ? "処理" : "素通し")")
+        // 日本語モードでも、かなにならない数字や記号はそのままアプリへ渡る。日本語のすぐあとなら、あいだに空白を補う
+        if !handled, !session.isComposing {
+            if case .backspace = key { skipsDirectSpacing = true; return false }
+            defer { skipsDirectSpacing = false }
+            if case .char(let c) = key, Engine.shared.autoSpacingEnabled, !skipsDirectSpacing,
+               Spacing.needsSpace(after: tailBeforeInsertion(), before: String(c)), let client = textClient {
+                client.insertText(" " + String(c), replacementRange: NSRange(location: NSNotFound, length: NSNotFound))
+                ContextProbe.trace("空白を補った\t数字・記号の前")
+                return true
+            }
+        }
         // アプリへ渡したキー (改行や矢印) でカーソルが動く。先読みが出たままなら、動いたあとの位置へ移す
         if !handled, !session.isComposing, session.view.ghost != nil {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
