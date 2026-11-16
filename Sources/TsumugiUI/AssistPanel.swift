@@ -10,6 +10,8 @@ public enum AssistContent: Equatable {
     case candidates([String], selected: Int)
     /// 確定済みの文章への直しの提案。keys は反映するキーの表示。
     case correction(from: String, to: String, keys: [String])
+    /// ひとことの知らせ (直しを反映できなかったとき)。
+    case notice(String)
 
     public init(view: SessionView) {
         if !view.candidates.isEmpty {
@@ -143,6 +145,24 @@ struct CandidateList: View {
     }
 }
 
+struct NoticePill: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Color.orange)
+            Text(text)
+                .font(.system(size: 13))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 9)
+        .frame(height: 28)
+        .fixedSize()
+    }
+}
+
 struct AssistRoot: View {
     @ObservedObject var model: AssistModel
 
@@ -156,6 +176,8 @@ struct AssistRoot: View {
             CandidateList(items: items, selected: selected)
         case .correction(let from, let to, let keys):
             CorrectionPill(from: from, to: to, keys: keys)
+        case .notice(let text):
+            NoticePill(text: text)
         }
     }
 }

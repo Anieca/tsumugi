@@ -140,7 +140,11 @@ final class TsumugiInputController: IMKInputController {
             correction = nil
             let mods = event.modifierFlags.intersection([.command, .control, .option, .shift])
             // Tab で反映する。提案が出ている間だけ受け取り、それ以外はアプリへ渡す
-            if event.keyCode == 48, mods.isEmpty, !session.isComposing, apply(c) { return true }
+            if event.keyCode == 48, mods.isEmpty, !session.isComposing {
+                // 反映できなかったときも Tab はアプリへ渡さない (提案を見て押した Tab で、フォーカスが隣へ移ってしまう)
+                if !apply(c) { assistPanel.hide() }
+                return true
+            }
             assistPanel.hide()
         }
         // 英字モードで何も入力していなければ、打鍵はそのままアプリへ
@@ -332,18 +336,25 @@ final class TsumugiInputController: IMKInputController {
         guard let client = textClient else { return false }
         let sel = client.selectedRange()
         let length = (c.tail as NSString).length
-        guard sel.location != NSNotFound, sel.length == 0, sel.location >= length else { return false }
-        let range = NSRange(location: sel.location - length, length: length)
-        guard client.attributedSubstring(from: range)?.string == c.tail else { return false }
-        // 範囲を指定した書き換えだけだと、Electron 系のアプリは「入力メソッドはこのキーを使わなかった」とみなし、
-        // Tab をアプリ側でも処理してしまう (フォーカスが隣の欄へ移る)。末尾の 2 文字を、ふつうの確定と
-        // 同じ形 (範囲の指定なし) で入れると、キーは入力メソッドが使ったものとして扱われる。
+        guard sel.location != NSNotFound, sel.length == 0, sel.location >= length else {
+            ContextProbe.trace("直しを反映できず\tカーソルの位置が合わない")
+            return false
+        }
+        var range = NSRange(location: sel.location - length, length: length)
+        let current = client.attributedSubstring(from: range)?.string
+        guard current == c.tail else {
+            ContextProbe.trace("直しを反映できず\t\(current == nil ? "文章を読めない" : "文章が変わっている")")
+            return false
+        }
+        // 入れ方の理由は Correction.edit を参照。
         // (未確定文字列として差し替える方法は、Electron が範囲の指定を無視するので使えない。)
-        let fixed = Array(c.fixedTail)
-        let split = fixed.count > 2 ? fixed.count - 2 : 0
-        client.insertText(String(fixed[..<split]), replacementRange: range)
-        if split < fixed.count {
-            client.insertText(String(fixed[split...]), replacementRange: NSRange(location: NSNotFound, length: NSNotFound))
+        let lead = min(2, range.location)
+        let before = lead > 0 ? client.attributedSubstring(from: NSRange(location: range.location - lead, length: lead))?.string : nil
+        let edit = c.edit(before: before ?? "")
+        range = NSRange(location: range.location - edit.extend, length: range.length + edit.extend)
+        client.insertText(edit.ranged, replacementRange: range)
+        if !edit.plain.isEmpty {
+            client.insertText(edit.plain, replacementRange: NSRange(location: NSNotFound, length: NSNotFound))
         }
         ContextProbe.trace("直しを適用")
         assistPanel.hide()
@@ -361,15 +372,31 @@ final class TsumugiInputController: IMKInputController {
             if ok {
                 self.scheduleProofread()   // 同じ文にまだあれば続けて出す
             } else {
-                Self.unreliableApps.insert(client.bundleIdentifier() ?? "")
+                Self.markUnreliable(client.bundleIdentifier() ?? "")
                 ContextProbe.trace("直しの反映を確認できず\t\(client.bundleIdentifier() ?? "?")")
+                // 入力メソッドからは入れた文字を消せない (範囲の指定を無視するアプリでは、消す指示も無視される)。
+                // 文章が変わったことを黙っていないで知らせる。アプリの取り消しで元に戻る。
+                assistPanel.show(.notice("直しを反映できませんでした。⌘Z で戻せます"), at: self.caretRect(client))
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+                    if self?.proofTicket.value == ticket { assistPanel.hide() }
+                }
             }
         }
         return true
     }
 
     /// 置き換えが想定どおりにならなかったアプリ。
-    private static var unreliableApps = Set<String>()
+    /// いまの版の Tsumugi で失敗したものだけを覚える (版が変われば、もう一度試す)。
+    private static let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? ""
+    private static var unreliableApps: Set<String> = {
+        let saved = UserDefaults.standard.dictionary(forKey: "unreliableApps") as? [String: String] ?? [:]
+        return Set(saved.filter { $0.value == build }.keys)
+    }()
+
+    private static func markUnreliable(_ app: String) {
+        unreliableApps.insert(app)
+        UserDefaults.standard.set(Dictionary(uniqueKeysWithValues: unreliableApps.map { ($0, build) }), forKey: "unreliableApps")
+    }
 
     // MARK: メニュー
 

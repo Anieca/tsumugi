@@ -120,7 +120,10 @@ public final class UserModel {
             let base = min(1500 + 1500 * log2(1 + w.count), 7000) * recency(w.last, t)
             // 同点のときは直近に選んだほうを優先する
             let fresh = 800 * pow(0.5, max(0, t - w.last) / 86400)
-            return (w, w.cost - Int32(base + fresh))
+            // 短い語ほどボーナスを絞る。1 文字の語を一度選んだだけで、その字を含む別の語 (えいじ → 絵|維持) まで
+            // 割ってしまうため。短い語は同じ読みの中で先頭に来れば足り、長い語は割れずにつながるための後押しが要る。
+            let scale = min(1, Double(reading.count - 1) / 3)
+            return (w, w.cost - Int32((base + fresh) * scale) - 50)
         }
     }
 

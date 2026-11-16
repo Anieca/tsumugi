@@ -111,4 +111,26 @@ final class ProofreaderTests: XCTestCase {
         XCTAssertNil(proofreader.check("CPUの仕様率を見たい") { true })
         XCTAssertNotNil(proofreader.check("CPUの仕様率を見たい"))
     }
+
+    /// 入力先へ入れる手順: 範囲を指定するほうは空にしない。指定なしのほうは 2 文字か空。合わせると直したあとの文字列になる。
+    func testCorrectionEditShape() {
+        for fixed in ["英", "英字", "英字版", "英字版です", "英字版ですね。"] {
+            for before in ["", "の", "この", "\nの", "の\n", "😀"] {
+                let c = Correction(from: "", to: "", tail: "絵維持", fixedTail: fixed, gain: 1)
+                let e = c.edit(before: before)
+                XCTAssertFalse(e.ranged.isEmpty, fixed)
+                XCTAssertTrue(e.plain.count == 2 || e.plain.isEmpty, fixed)
+                XCTAssertEqual(e.ranged + e.plain, String(before.suffix(e.extend)) + fixed)
+                XCTAssertFalse(String(before.suffix(e.extend)).contains("\n"))
+            }
+        }
+        let one = Correction(from: "", to: "", tail: "絵維持", fixedTail: "英", gain: 1)
+        XCTAssertEqual(one.edit(before: "この"), CorrectionEdit(extend: 2, ranged: "こ", plain: "の英"))
+        XCTAssertEqual(one.edit(before: "の"), CorrectionEdit(extend: 0, ranged: "英", plain: ""))
+        let two = Correction(from: "", to: "", tail: "絵維持", fixedTail: "英字", gain: 1)
+        XCTAssertEqual(two.edit(before: "この"), CorrectionEdit(extend: 1, ranged: "の", plain: "英字"))
+        XCTAssertEqual(two.edit(before: ""), CorrectionEdit(extend: 0, ranged: "英字", plain: ""))
+        let long = Correction(from: "", to: "", tail: "絵維持", fixedTail: "英字版です", gain: 1)
+        XCTAssertEqual(long.edit(before: "この"), CorrectionEdit(extend: 0, ranged: "英字版", plain: "です"))
+    }
 }

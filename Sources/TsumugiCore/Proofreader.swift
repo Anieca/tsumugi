@@ -37,6 +37,40 @@ public struct Correction: Equatable {
     }
 }
 
+/// 直しを入力先へ入れる手順。範囲を指定した置き換えと、そのあとにふつうの確定として入れる分に分ける。
+public struct CorrectionEdit: Equatable {
+    /// 置き換える範囲を、直す箇所の手前へ何文字広げるか (0〜2)。
+    public var extend: Int
+    /// 範囲を指定して置き換える文字列。空にはしない。
+    public var ranged: String
+    /// そのあと、範囲の指定なしで入れる文字列。2 文字か、空。
+    public var plain: String
+}
+
+extension Correction {
+    /// 入力先へ入れる手順を決める。Chromium 系のアプリ (Electron) の実機で確かめた 3 つの癖に合わせている。
+    ///
+    /// 1. 範囲を指定した置き換えだけだと「入力メソッドはこのキーを使わなかった」とみなされ、Tab がアプリ側でも
+    ///    処理される (フォーカスが隣へ移る)。範囲の指定なしで入れた文字があると、そうならない。
+    /// 2. ただし、範囲の指定なしで入れるのが 1 文字だと、ふつうの打鍵として扱われて 1 と同じことになり、
+    ///    その 1 文字も失われる。2 文字以上なら確定として扱われる。
+    /// 3. 範囲を指定するほうが空文字列だと、何も消さない (直した文字が後ろに足されるだけになる)。
+    ///
+    /// そこで「範囲を指定して 1 文字以上」+「指定なしで 2 文字」の形にする。直したあとが 3 文字に満たないときは、
+    /// 手前の文字を巻き込んで同じ文字に置き換える。巻き込める文字がなければ、範囲の指定だけで入れる
+    /// (文章は正しく直る。Tab がアプリへ渡るのは避けられない)。
+    /// - Parameter before: 直す箇所の直前の文章 (末尾の 2 文字まで使う)。
+    public func edit(before: String) -> CorrectionEdit {
+        let fixed = Array(fixedTail)
+        let need = max(0, 3 - fixed.count)
+        let borrowed = Array(before.suffix(need))
+        let usable = borrowed.count == need && borrowed.allSatisfy { !$0.isNewline && String($0).utf16.count == 1 && $0 != "\u{FFFD}" }
+        guard usable else { return CorrectionEdit(extend: 0, ranged: fixedTail, plain: "") }
+        let all = borrowed + fixed
+        return CorrectionEdit(extend: need, ranged: String(all.dropLast(2)), plain: String(all.suffix(2)))
+    }
+}
+
 /// 確定した文を、文全体の読みでもう一度変換し直し、そのほうがはっきり確からしい箇所を直しとして挙げる。
 ///
 /// 打っている最中の変換は、その時点までの読みしか知らない。句ごとに確定していくと、あとに続く言葉で

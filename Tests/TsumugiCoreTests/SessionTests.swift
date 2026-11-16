@@ -199,6 +199,16 @@ final class SessionTests: XCTestCase {
         XCTAssertEqual(user.stats.phrases, before)
     }
 
+    /// 1 文字の語を選んだことがあっても、その字ではじまる別の語を割らない (えいじ → 絵|維持 にしない)。
+    func testShortLearnedWordDoesNotSplitLongerWords() throws {
+        let dict = try XCTUnwrap(SessionTests.dictionary, "build/system.dict がありません")
+        let user = UserModel(fileURL: nil)
+        user.learnChoice(reading: "え", surface: "絵", lid: 1851, rid: 1851, cost: 3658, topCost: 3488)
+        let converter = Converter(dictionary: dict, userModel: user)
+        XCTAssertEqual(converter.convert("えいじ").first?.segments.map(\.surface), ["英字"])
+        XCTAssertEqual(converter.convert("え").first?.segments.map(\.surface), ["絵"])
+    }
+
     func testUserModelPersistence() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("tsumugi-test-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }

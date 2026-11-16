@@ -111,9 +111,15 @@ case "type":
     // 例: tsumugi-cli type "kyouhaiitenkidesune" "<space>" "<enter>"
     let useLLM = ProcessInfo.processInfo.environment["TSUMUGI_NO_LLM"] == nil
     let model = useLLM ? ZenzModel(path: modelPath) : nil
-    let user = UserModel(fileURL: nil)
+    // TSUMUGI_USER_MODEL=<学習ファイルの写し> を渡すと、その学習内容と保存済みの英単語で試す (学習は止めるので書き換えない)
+    let userPath = ProcessInfo.processInfo.environment["TSUMUGI_USER_MODEL"]
+    let user = UserModel(fileURL: userPath.map { URL(fileURLWithPath: $0) })
+    user.isPaused = userPath != nil
     let session = Session(converter: Converter(dictionary: dict, userModel: user), userModel: user, neural: model)
     session.runsNeuralInline = true
+    if userPath != nil {
+        session.mixed = MixedSegmenter(converter: converter, lexicon: LatinLexicon(fileURL: LatinLexicon.defaultURL()))
+    }
     // TSUMUGI_WORDS=notion,Tab のように渡すと、その語を知っているものとして英字まじりの入力を試す
     if let words = ProcessInfo.processInfo.environment["TSUMUGI_WORDS"] {
         let lexicon = LatinLexicon(fileURL: nil)
